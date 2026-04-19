@@ -1,0 +1,39 @@
+{
+  "name": "lark-cli-codex-app",
+  "version": "0.1.0",
+  "description": "Codex plugin for Lark and Feishu powered by lark-cli.",
+  "author": {
+    "name": "RyanWeb31110",
+    "url": "https://github.com/RyanWeb31110"
+  },
+  "homepage": "https://github.com/RyanWeb31110/lark-cli-codex-app",
+  "repository": "https://github.com/RyanWeb31110/lark-cli-codex-app",
+  "license": "MIT",
+  "keywords": [
+    "codex-plugin",
+    "lark",
+    "feishu",
+    "productivity",
+    "calendar",
+    "messages"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Lark CLI",
+    "shortDescription": "Use Lark and Feishu from Codex with compact CLI output.",
+    "longDescription": "Manage calendars, messages, docs, contacts, mail, minutes, sheets, and bitables from Codex using the token-efficient lark CLI and bundled skills.",
+    "developerName": "RyanWeb31110",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/RyanWeb31110/lark-cli-codex-app",
+    "defaultPrompt": [
+      "Check my Lark calendar for this week and highlight conflicts.",
+      "Find the last messages in our release chat and summarize decisions.",
+      "Open a Lark document as markdown and pull out the action items."
+    ],
+    "brandColor": "#00B96B"
+  }
+}
