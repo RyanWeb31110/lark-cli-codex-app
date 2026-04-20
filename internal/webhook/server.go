@@ -7,12 +7,10 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/yjwong/lark-cli/internal/api"
+	"github.com/yjwong/lark-cli/internal/inbound"
 )
 
 // Config configures the webhook server.
@@ -26,10 +24,9 @@ type Config struct {
 
 // Server handles Feishu event callbacks.
 type Server struct {
-	cfg    Config
-	client *api.Client
-	logger *log.Logger
-	mu     sync.Mutex
+	cfg     Config
+	logger  *log.Logger
+	handler *inbound.Handler
 }
 
 // CallbackEnvelope covers the Feishu URL verification and event callback shapes used by this server.
@@ -85,27 +82,8 @@ type EventMessage struct {
 	Content     string `json:"content,omitempty"`
 }
 
-// LoggedEvent is the JSONL shape persisted by the webhook server.
-type LoggedEvent struct {
-	ReceivedAt   string          `json:"received_at"`
-	Schema       string          `json:"schema,omitempty"`
-	EventID      string          `json:"event_id,omitempty"`
-	EventType    string          `json:"event_type,omitempty"`
-	TenantKey    string          `json:"tenant_key,omitempty"`
-	AppID        string          `json:"app_id,omitempty"`
-	MessageID    string          `json:"message_id,omitempty"`
-	RootID       string          `json:"root_id,omitempty"`
-	ParentID     string          `json:"parent_id,omitempty"`
-	ChatID       string          `json:"chat_id,omitempty"`
-	ChatType     string          `json:"chat_type,omitempty"`
-	MessageType  string          `json:"message_type,omitempty"`
-	MessageText  string          `json:"message_text,omitempty"`
-	SenderType   string          `json:"sender_type,omitempty"`
-	SenderOpenID string          `json:"sender_open_id,omitempty"`
-	SenderUserID string          `json:"sender_user_id,omitempty"`
-	RawContent   string          `json:"raw_content,omitempty"`
-	RawEvent     json.RawMessage `json:"raw_event,omitempty"`
-}
+// LoggedEvent is the JSONL shape persisted by inbound handlers.
+type LoggedEvent = inbound.LoggedEvent
 
 // New returns a webhook server.
 func New(cfg Config) *Server {
@@ -121,10 +99,14 @@ func New(cfg Config) *Server {
 	if cfg.EventLogPath == "" {
 		cfg.EventLogPath = "webhook-events.jsonl"
 	}
+	logger := log.New(os.Stderr, "lark-webhook: ", log.LstdFlags)
 	return &Server{
 		cfg:    cfg,
-		client: api.NewClient(),
-		logger: log.New(os.Stderr, "lark-webhook: ", log.LstdFlags),
+		logger: logger,
+		handler: inbound.NewHandler(inbound.Config{
+			EventLogPath:  cfg.EventLogPath,
+			AutoReplyText: cfg.AutoReplyText,
+		}, logger),
 	}
 }
 
@@ -231,18 +213,12 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	if envelope.Header != nil && envelope.Header.EventType == "im.message.receive_v1" && envelope.Event != nil {
 		entry := buildLoggedEvent(envelope, raw)
-		if err := s.appendEvent(entry); err != nil {
+		if err := s.handler.Process(entry); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{
 				"error":   "append_failed",
 				"message": err.Error(),
 			})
 			return
-		}
-		s.logger.Printf("received message event message_id=%s chat_id=%s sender_open_id=%s", entry.MessageID, entry.ChatID, entry.SenderOpenID)
-		if s.cfg.AutoReplyText != "" && shouldAutoReply(entry) {
-			if err := s.autoReply(entry); err != nil {
-				s.logger.Printf("auto reply failed for message_id=%s: %v", entry.MessageID, err)
-			}
 		}
 	}
 
@@ -263,122 +239,30 @@ func (s *Server) validateToken(tokens ...string) error {
 	return fmt.Errorf("callback token did not match configured webhook.verification_token")
 }
 
-func (s *Server) appendEvent(entry LoggedEvent) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if err := os.MkdirAll(filepath.Dir(s.cfg.EventLogPath), 0700); err != nil {
-		return fmt.Errorf("create event log directory: %w", err)
-	}
-
-	file, err := os.OpenFile(s.cfg.EventLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		return fmt.Errorf("open event log: %w", err)
-	}
-	defer file.Close()
-
-	payload, err := json.Marshal(entry)
-	if err != nil {
-		return fmt.Errorf("marshal event log entry: %w", err)
-	}
-
-	if _, err := file.Write(append(payload, '\n')); err != nil {
-		return fmt.Errorf("write event log: %w", err)
-	}
-	return nil
-}
-
-func (s *Server) autoReply(entry LoggedEvent) error {
-	reply := renderReplyTemplate(s.cfg.AutoReplyText, entry)
-	content, err := buildTextContent(reply)
-	if err != nil {
-		return err
-	}
-
-	_, err = s.client.ReplyMessage(entry.MessageID, "text", content, entry.RootID, true)
-	return err
-}
-
 func buildLoggedEvent(envelope CallbackEnvelope, raw json.RawMessage) LoggedEvent {
-	entry := LoggedEvent{
-		ReceivedAt: time.Now().Format(time.RFC3339Nano),
-		Schema:     envelope.Schema,
-		RawEvent:   raw,
+	input := inbound.MessageInput{
+		Schema:   envelope.Schema,
+		RawEvent: raw,
 	}
 	if envelope.Header != nil {
-		entry.EventID = envelope.Header.EventID
-		entry.EventType = envelope.Header.EventType
-		entry.TenantKey = envelope.Header.TenantKey
-		entry.AppID = envelope.Header.AppID
+		input.EventID = envelope.Header.EventID
+		input.EventType = envelope.Header.EventType
+		input.TenantKey = envelope.Header.TenantKey
+		input.AppID = envelope.Header.AppID
 	}
 	if envelope.Event != nil {
-		entry.MessageID = envelope.Event.Message.MessageID
-		entry.RootID = envelope.Event.Message.RootID
-		entry.ParentID = envelope.Event.Message.ParentID
-		entry.ChatID = envelope.Event.Message.ChatID
-		entry.ChatType = envelope.Event.Message.ChatType
-		entry.MessageType = envelope.Event.Message.MessageType
-		entry.RawContent = envelope.Event.Message.Content
-		entry.MessageText = extractMessageText(envelope.Event.Message.MessageType, envelope.Event.Message.Content)
-		entry.SenderType = envelope.Event.Sender.SenderType
-		entry.SenderOpenID = envelope.Event.Sender.SenderID.OpenID
-		entry.SenderUserID = envelope.Event.Sender.SenderID.UserID
+		input.MessageID = envelope.Event.Message.MessageID
+		input.RootID = envelope.Event.Message.RootID
+		input.ParentID = envelope.Event.Message.ParentID
+		input.ChatID = envelope.Event.Message.ChatID
+		input.ChatType = envelope.Event.Message.ChatType
+		input.MessageType = envelope.Event.Message.MessageType
+		input.RawContent = envelope.Event.Message.Content
+		input.SenderType = envelope.Event.Sender.SenderType
+		input.SenderOpenID = envelope.Event.Sender.SenderID.OpenID
+		input.SenderUserID = envelope.Event.Sender.SenderID.UserID
 	}
-	return entry
-}
-
-func extractMessageText(messageType, raw string) string {
-	if strings.TrimSpace(raw) == "" {
-		return ""
-	}
-
-	if messageType == "text" {
-		var payload struct {
-			Text string `json:"text"`
-		}
-		if err := json.Unmarshal([]byte(raw), &payload); err == nil {
-			return payload.Text
-		}
-	}
-
-	var generic map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &generic); err == nil {
-		if text, ok := generic["text"].(string); ok {
-			return text
-		}
-	}
-
-	return raw
-}
-
-func shouldAutoReply(entry LoggedEvent) bool {
-	if entry.MessageID == "" {
-		return false
-	}
-	if entry.SenderType != "" && entry.SenderType != "user" {
-		return false
-	}
-	return true
-}
-
-func renderReplyTemplate(template string, entry LoggedEvent) string {
-	replacer := strings.NewReplacer(
-		"{{text}}", entry.MessageText,
-		"{{message_id}}", entry.MessageID,
-		"{{chat_id}}", entry.ChatID,
-		"{{sender_open_id}}", entry.SenderOpenID,
-		"{{sender_user_id}}", entry.SenderUserID,
-	)
-	return replacer.Replace(template)
-}
-
-func buildTextContent(text string) (string, error) {
-	payload := map[string]string{"text": text}
-	content, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-	return string(content), nil
+	return inbound.NewLoggedEvent(input)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {

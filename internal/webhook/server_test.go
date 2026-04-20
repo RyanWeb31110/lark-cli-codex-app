@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yjwong/lark-cli/internal/inbound"
 )
 
 func TestHandleURLVerification(t *testing.T) {
@@ -89,7 +91,7 @@ func TestHandleMessageEventWritesJSONL(t *testing.T) {
 		t.Fatalf("expected 1 log line, got %d", len(lines))
 	}
 
-	var entry LoggedEvent
+	var entry inbound.LoggedEvent
 	if err := json.Unmarshal([]byte(lines[0]), &entry); err != nil {
 		t.Fatalf("unmarshal log entry: %v", err)
 	}

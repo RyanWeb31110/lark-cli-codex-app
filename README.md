@@ -22,7 +22,8 @@ The result: AI assistants can interact with Lark using fewer tokens, leaving mor
 - **Contacts** - Look up users by ID, search by name, list department members
 - **Documents** - Read documents as markdown, list folders, resolve wiki nodes, get comments
 - **Messages** - Retrieve chat history, download attachments, send messages, add/list/remove reactions
-- **Webhook** - Receive Feishu/Lark bot message events through event subscriptions and optionally auto-reply
+- **Gateway** - Receive Feishu/Lark bot message events locally through WebSocket long connections, optionally auto-reply
+- **Webhook** - Optional fallback for event subscriptions when you explicitly want callback mode
 - **Mail** - Read and search emails via IMAP with local caching
 - **Minutes** - Get meeting recording metadata, export transcripts, download media
 - **Sheets** - Read spreadsheet metadata and content from Lark Sheets
@@ -79,9 +80,41 @@ If a skill already exists, the installer leaves it alone unless you pass `--forc
 
 After installing, restart Codex so it picks up the new skills.
 
+## Gateway Mode
+
+This fork now includes a local gateway that uses Feishu/Lark WebSocket event subscriptions:
+
+```bash
+lark gateway serve
+```
+
+Useful flags:
+
+```bash
+lark gateway serve \
+  --event-log ~/.lark/gateway-events.jsonl \
+  --auto-reply-text "收到：{{text}}"
+```
+
+What it does:
+
+- Opens an outbound WebSocket connection to Feishu/Lark
+- Receives `im.message.receive_v1` events without any public callback URL
+- Appends incoming message events to a local JSONL file
+- Optionally replies to incoming messages using the bot
+
+Typical setup:
+
+1. In the Feishu/Lark app console, enable event subscriptions with **persistent connection / WebSocket** mode.
+2. Subscribe to the message receive event (`im.message.receive_v1` / receive message).
+3. Make sure the bot is added to the target chat.
+4. Run `lark gateway serve` locally.
+
+This is the recommended local development path because it does not require a public HTTPS tunnel.
+
 ## Webhook Mode
 
-This fork includes a local webhook server for Feishu/Lark event subscriptions:
+This fork still includes a local webhook server for Feishu/Lark event subscriptions when you explicitly need callback mode:
 
 ```bash
 lark webhook serve

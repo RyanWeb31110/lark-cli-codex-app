@@ -20,6 +20,10 @@ type Config struct {
 	OAuth struct {
 		RedirectPort int `mapstructure:"redirect_port"`
 	} `mapstructure:"oauth"`
+	Gateway struct {
+		EventLog      string `mapstructure:"event_log"`
+		AutoReplyText string `mapstructure:"auto_reply_text"`
+	} `mapstructure:"gateway"`
 	Webhook struct {
 		ListenAddr        string `mapstructure:"listen_addr"`
 		Path              string `mapstructure:"path"`
@@ -73,6 +77,7 @@ func Init() error {
 	viper.SetDefault("defaults.timezone", "Asia/Singapore")
 	viper.SetDefault("defaults.reminder_minutes", 15)
 	viper.SetDefault("oauth.redirect_port", 9999)
+	viper.SetDefault("gateway.event_log", filepath.Join(cfgDir, "gateway-events.jsonl"))
 	viper.SetDefault("webhook.listen_addr", "0.0.0.0:8080")
 	viper.SetDefault("webhook.path", "/webhook/feishu")
 	viper.SetDefault("webhook.event_log", filepath.Join(cfgDir, "webhook-events.jsonl"))
@@ -81,6 +86,8 @@ func Init() error {
 	viper.SetEnvPrefix("LARK")
 	viper.BindEnv("app_id", "LARK_APP_ID")
 	viper.BindEnv("app_secret", "LARK_APP_SECRET")
+	viper.BindEnv("gateway.event_log", "LARK_GATEWAY_EVENT_LOG")
+	viper.BindEnv("gateway.auto_reply_text", "LARK_GATEWAY_AUTO_REPLY_TEXT")
 	viper.BindEnv("webhook.listen_addr", "LARK_WEBHOOK_LISTEN")
 	viper.BindEnv("webhook.path", "LARK_WEBHOOK_PATH")
 	viper.BindEnv("webhook.verification_token", "LARK_WEBHOOK_TOKEN")
@@ -142,6 +149,23 @@ func GetTimezone() string {
 // GetRedirectPort returns the OAuth redirect port
 func GetRedirectPort() int {
 	return viper.GetInt("oauth.redirect_port")
+}
+
+// GetGatewayEventLogPath returns the JSONL path used for gateway event persistence.
+func GetGatewayEventLogPath() string {
+	path := strings.TrimSpace(viper.GetString("gateway.event_log"))
+	if path == "" {
+		return filepath.Join(cfgDir, "gateway-events.jsonl")
+	}
+	if !filepath.IsAbs(path) {
+		return filepath.Join(rootDir, path)
+	}
+	return path
+}
+
+// GetGatewayAutoReplyText returns the optional static auto-reply text.
+func GetGatewayAutoReplyText() string {
+	return viper.GetString("gateway.auto_reply_text")
 }
 
 // GetWebhookListenAddr returns the listen address for webhook server.

@@ -17,6 +17,14 @@ defaults:
 oauth:
   redirect_port: 9999
 
+# Local gateway settings for WebSocket long connections (recommended)
+gateway:
+  # JSONL file that stores received message events
+  event_log: ".lark/gateway-events.jsonl"
+  # Optional plain-text auto-reply template
+  # Supported placeholders: {{text}}, {{chat_id}}, {{message_id}}, {{sender_open_id}}
+  auto_reply_text: ""
+
 # Webhook settings for Feishu/Lark event subscriptions (optional)
 webhook:
   # Local listen address for `lark webhook serve`
