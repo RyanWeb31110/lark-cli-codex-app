@@ -54,7 +54,7 @@ var Groups = map[string]ScopeGroup{
 	"minutes": {
 		Name:        "minutes",
 		Description: "Meeting recordings and transcripts",
-		Scopes:      []string{"minutes:minutes:readonly", "minutes:minute:download"},
+		Scopes:      []string{"minutes:minutes:readonly"},
 		Commands:    []string{"minutes"},
 	},
 }
