@@ -20,6 +20,13 @@ type Config struct {
 	OAuth struct {
 		RedirectPort int `mapstructure:"redirect_port"`
 	} `mapstructure:"oauth"`
+	Webhook struct {
+		ListenAddr        string `mapstructure:"listen_addr"`
+		Path              string `mapstructure:"path"`
+		VerificationToken string `mapstructure:"verification_token"`
+		EventLog          string `mapstructure:"event_log"`
+		AutoReplyText     string `mapstructure:"auto_reply_text"`
+	} `mapstructure:"webhook"`
 	CustomEmojis map[string]string `mapstructure:"custom_emojis"`
 }
 
@@ -66,11 +73,19 @@ func Init() error {
 	viper.SetDefault("defaults.timezone", "Asia/Singapore")
 	viper.SetDefault("defaults.reminder_minutes", 15)
 	viper.SetDefault("oauth.redirect_port", 9999)
+	viper.SetDefault("webhook.listen_addr", "0.0.0.0:8080")
+	viper.SetDefault("webhook.path", "/webhook/feishu")
+	viper.SetDefault("webhook.event_log", filepath.Join(cfgDir, "webhook-events.jsonl"))
 
 	// Environment variable bindings
 	viper.SetEnvPrefix("LARK")
 	viper.BindEnv("app_id", "LARK_APP_ID")
 	viper.BindEnv("app_secret", "LARK_APP_SECRET")
+	viper.BindEnv("webhook.listen_addr", "LARK_WEBHOOK_LISTEN")
+	viper.BindEnv("webhook.path", "LARK_WEBHOOK_PATH")
+	viper.BindEnv("webhook.verification_token", "LARK_WEBHOOK_TOKEN")
+	viper.BindEnv("webhook.event_log", "LARK_WEBHOOK_EVENT_LOG")
+	viper.BindEnv("webhook.auto_reply_text", "LARK_WEBHOOK_AUTO_REPLY_TEXT")
 
 	// Read config file (if exists)
 	if err := viper.ReadInConfig(); err != nil {
@@ -127,6 +142,45 @@ func GetTimezone() string {
 // GetRedirectPort returns the OAuth redirect port
 func GetRedirectPort() int {
 	return viper.GetInt("oauth.redirect_port")
+}
+
+// GetWebhookListenAddr returns the listen address for webhook server.
+func GetWebhookListenAddr() string {
+	return viper.GetString("webhook.listen_addr")
+}
+
+// GetWebhookPath returns the webhook callback path.
+func GetWebhookPath() string {
+	path := strings.TrimSpace(viper.GetString("webhook.path"))
+	if path == "" {
+		return "/webhook/feishu"
+	}
+	if !strings.HasPrefix(path, "/") {
+		return "/" + path
+	}
+	return path
+}
+
+// GetWebhookVerificationToken returns the verification token for event callbacks.
+func GetWebhookVerificationToken() string {
+	return viper.GetString("webhook.verification_token")
+}
+
+// GetWebhookEventLogPath returns the JSONL path used for webhook event persistence.
+func GetWebhookEventLogPath() string {
+	path := strings.TrimSpace(viper.GetString("webhook.event_log"))
+	if path == "" {
+		return filepath.Join(cfgDir, "webhook-events.jsonl")
+	}
+	if !filepath.IsAbs(path) {
+		return filepath.Join(rootDir, path)
+	}
+	return path
+}
+
+// GetWebhookAutoReplyText returns the optional static auto-reply text.
+func GetWebhookAutoReplyText() string {
+	return viper.GetString("webhook.auto_reply_text")
 }
 
 // TokensFilePath returns the path to the tokens file

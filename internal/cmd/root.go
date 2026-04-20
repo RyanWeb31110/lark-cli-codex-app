@@ -73,4 +73,5 @@ func init() {
 	rootCmd.AddCommand(msgCmd)
 	rootCmd.AddCommand(sheetCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(webhookCmd)
 }

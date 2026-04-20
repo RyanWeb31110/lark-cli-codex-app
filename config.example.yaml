@@ -17,6 +17,20 @@ defaults:
 oauth:
   redirect_port: 9999
 
+# Webhook settings for Feishu/Lark event subscriptions (optional)
+webhook:
+  # Local listen address for `lark webhook serve`
+  listen_addr: "0.0.0.0:8080"
+  # Callback path configured in the Feishu/Lark app console
+  path: "/webhook/feishu"
+  # Optional verification token configured in the Feishu/Lark app console
+  verification_token: ""
+  # JSONL file that stores received message events
+  event_log: ".lark/webhook-events.jsonl"
+  # Optional plain-text auto-reply template
+  # Supported placeholders: {{text}}, {{chat_id}}, {{message_id}}, {{sender_open_id}}
+  auto_reply_text: ""
+
 # Custom emoji mappings (optional)
 # Map custom emoji IDs to human-readable labels for reactions
 # Find custom emoji IDs via: lark msg react emojis

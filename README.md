@@ -22,6 +22,7 @@ The result: AI assistants can interact with Lark using fewer tokens, leaving mor
 - **Contacts** - Look up users by ID, search by name, list department members
 - **Documents** - Read documents as markdown, list folders, resolve wiki nodes, get comments
 - **Messages** - Retrieve chat history, download attachments, send messages, add/list/remove reactions
+- **Webhook** - Receive Feishu/Lark bot message events through event subscriptions and optionally auto-reply
 - **Mail** - Read and search emails via IMAP with local caching
 - **Minutes** - Get meeting recording metadata, export transcripts, download media
 - **Sheets** - Read spreadsheet metadata and content from Lark Sheets
@@ -71,12 +72,49 @@ Build the CLI and install the bundled skills into your local Codex home:
 By default this will:
 
 - Build `lark` into `./lark`
-- Install the binary into `~/.local/bin/lark`
+- Install the binary into `~/.local/bin/lark` with a wrapper that loads `~/.lark/env.sh`
 - Copy the bundled skills into `${CODEX_HOME:-~/.codex}/skills`
 
 If a skill already exists, the installer leaves it alone unless you pass `--force`.
 
 After installing, restart Codex so it picks up the new skills.
+
+## Webhook Mode
+
+This fork includes a local webhook server for Feishu/Lark event subscriptions:
+
+```bash
+lark webhook serve
+```
+
+Useful flags:
+
+```bash
+lark webhook serve \
+  --listen 0.0.0.0:8080 \
+  --path /webhook/feishu \
+  --token your-verification-token \
+  --auto-reply-text "收到：{{text}}"
+```
+
+What it does:
+
+- Handles URL verification (`challenge`) callbacks
+- Accepts plaintext `im.message.receive_v1` events
+- Appends incoming message events to a local JSONL file
+- Optionally replies to incoming messages using the bot
+
+Current limitation:
+
+- Encrypted callbacks are not supported yet, so leave the Feishu/Lark **Encrypt Key** blank for this version
+
+Typical setup:
+
+1. Expose your local server through a public HTTPS tunnel or reverse proxy.
+2. In the Feishu/Lark app console, set the request URL to your public URL plus the configured webhook path.
+3. If you set a verification token in the app console, pass the same value through `webhook.verification_token` or `--token`.
+4. Subscribe to the message receive event (`im.message.receive_v1` / receive message).
+5. Add the bot to the target chat.
 
 ## Usage with Claude Code
 
