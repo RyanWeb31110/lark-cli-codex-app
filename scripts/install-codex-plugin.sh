@@ -36,6 +36,7 @@ config_dir="${LARK_CONFIG_DIR:-$HOME/.lark}"
 binary_path="$bin_dir/lark"
 real_binary_path="$bin_dir/lark-real"
 config_file="$config_dir/config.yaml"
+env_file="$config_dir/env.sh"
 
 mkdir -p "$skills_dir" "$bin_dir" "$config_dir"
 
@@ -49,6 +50,10 @@ cat >"$binary_path" <<EOF
 set -euo pipefail
 
 export LARK_CONFIG_DIR="\${LARK_CONFIG_DIR:-$config_dir}"
+if [[ -f "$env_file" ]]; then
+  # shellcheck disable=SC1090
+  source "$env_file"
+fi
 exec "$real_binary_path" "\$@"
 EOF
 chmod 0755 "$binary_path"
@@ -58,6 +63,17 @@ echo "Installed CLI binary to $real_binary_path"
 if [[ ! -f "$config_file" ]]; then
   cp "$repo_root/config.example.yaml" "$config_file"
   echo "Installed config template to $config_file"
+fi
+
+if [[ ! -f "$env_file" ]]; then
+  cat >"$env_file" <<'EOF'
+#!/usr/bin/env bash
+
+# Set your Lark or Feishu app secret here.
+# export LARK_APP_SECRET="your_app_secret"
+EOF
+  chmod 0600 "$env_file"
+  echo "Installed env template to $env_file"
 fi
 
 for skill_path in "$repo_root"/skills/*; do
@@ -81,6 +97,6 @@ Done.
 Next steps:
 1. Ensure $bin_dir is in your PATH
 2. Update $config_file with your App ID and region
-3. Set LARK_APP_SECRET in your shell environment
+3. Set LARK_APP_SECRET in $env_file
 4. Restart Codex so it picks up the new skills
 EOF
