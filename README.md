@@ -23,6 +23,8 @@ The result: AI assistants can interact with Lark using fewer tokens, leaving mor
 - **Documents** - Read documents as markdown, list folders, resolve wiki nodes, get comments
 - **Messages** - Retrieve chat history, download attachments, send messages, add/list/remove reactions
 - **Gateway** - Receive Feishu/Lark bot message events locally through WebSocket long connections, optionally auto-reply
+- **Agent Bridge** - Dispatch inbound Feishu messages to local `codex exec` tasks and send results back to chat
+- **Desktop Queue** - Route Feishu desktop-operation requests into a local desktop-GUI task queue for this Codex desktop thread
 - **Webhook** - Optional fallback for event subscriptions when you explicitly want callback mode
 - **Mail** - Read and search emails via IMAP with local caching
 - **Minutes** - Get meeting recording metadata, export transcripts, download media
@@ -96,12 +98,31 @@ lark gateway serve \
   --auto-reply-text "收到：{{text}}"
 ```
 
+Or enable the local task agent:
+
+```bash
+lark gateway serve \
+  --agent \
+  --agent-workspace ~/WorkSpace
+```
+
+Desktop GUI tasks use a separate queue and are processed by the built-in local desktop worker. The `/gui ` prefix is still supported, but no longer required. Plain desktop requests such as the following will also be detected automatically:
+
+```text
+打开 Safari，然后访问 openai.com
+```
+
+The gateway will queue that request and acknowledge it with a task id instead of sending it to `codex exec`.
+
 What it does:
 
 - Opens an outbound WebSocket connection to Feishu/Lark
 - Receives `im.message.receive_v1` events without any public callback URL
 - Appends incoming message events to a local JSONL file
 - Optionally replies to incoming messages using the bot
+- Optionally dispatches inbound messages to local `codex exec` tasks and replies with the result
+- Routes explicit `/gui ...` messages or detected desktop-operation requests into a dedicated local desktop task queue
+- Runs a local desktop worker that automatically picks up queued GUI tasks
 
 Typical setup:
 
@@ -109,6 +130,23 @@ Typical setup:
 2. Subscribe to the message receive event (`im.message.receive_v1` / receive message).
 3. Make sure the bot is added to the target chat.
 4. Run `lark gateway serve` locally.
+
+If you want the bot to trigger local Codex tasks instead of behaving like a plain echo bot, enable the `agent` section in `config.yaml` or start with `--agent`.
+
+Current limitation:
+
+- Opening apps and links works directly.
+- Keyboard-driven GUI actions may require granting macOS Accessibility permission to the process running `osascript`. Without that permission, the worker falls back to opening the app and replying with the computed result when possible.
+
+### Desktop Queue Helpers
+
+The desktop queue can be inspected and driven with:
+
+```bash
+lark desktop tasks pop
+lark desktop tasks complete --id <task-id> --result "done" --reply
+lark desktop tasks fail --id <task-id> --error "why" --reply
+```
 
 This is the recommended local development path because it does not require a public HTTPS tunnel.
 

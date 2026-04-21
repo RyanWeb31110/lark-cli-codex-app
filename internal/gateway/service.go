@@ -7,13 +7,16 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	larkdispatcher "github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
+	"github.com/yjwong/lark-cli/internal/agent"
 	"github.com/yjwong/lark-cli/internal/config"
+	"github.com/yjwong/lark-cli/internal/desktop"
 	"github.com/yjwong/lark-cli/internal/inbound"
 )
 
@@ -21,6 +24,8 @@ import (
 type Config struct {
 	EventLogPath  string
 	AutoReplyText string
+	Agent         agent.Config
+	DesktopWorker bool
 }
 
 // Service receives Feishu/Lark events through the long-connection WebSocket SDK.
@@ -28,15 +33,24 @@ type Service struct {
 	cfg     Config
 	logger  *log.Logger
 	handler *inbound.Handler
+	agent   *agent.Runner
+	desktop *desktop.Queue
+	worker  *desktop.Worker
 }
 
 // New returns a WebSocket gateway service.
 func New(cfg Config) *Service {
 	logger := log.New(os.Stderr, "lark-gateway: ", log.LstdFlags)
 	return &Service{
-		cfg:     cfg,
-		logger:  logger,
-		handler: inbound.NewHandler(inbound.Config(cfg), logger),
+		cfg:    cfg,
+		logger: logger,
+		handler: inbound.NewHandler(inbound.Config{
+			EventLogPath:  cfg.EventLogPath,
+			AutoReplyText: cfg.AutoReplyText,
+		}, logger),
+		agent:   agent.NewRunner(cfg.Agent, logger),
+		desktop: desktop.DefaultQueue(),
+		worker:  desktop.NewWorker(desktop.DefaultQueue(), logger, desktop.WorkerConfig{}),
 	}
 }
 
@@ -55,6 +69,7 @@ func (s *Service) Serve(ctx context.Context) error {
 
 	dispatcher := larkdispatcher.NewEventDispatcher("", "")
 	dispatcher.OnP2MessageReceiveV1(s.handleMessageReceive)
+	dispatcher.OnP2MessageReadV1(s.handleMessageRead)
 
 	opts := []larkws.ClientOption{
 		larkws.WithEventHandler(dispatcher),
@@ -67,6 +82,14 @@ func (s *Service) Serve(ctx context.Context) error {
 	}
 
 	client := larkws.NewClient(appID, appSecret, opts...)
+
+	if s.cfg.DesktopWorker {
+		go func() {
+			if err := s.worker.Serve(ctx); err != nil {
+				s.logger.Printf("desktop worker stopped with error: %v", err)
+			}
+		}()
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -83,11 +106,36 @@ func (s *Service) Serve(ctx context.Context) error {
 }
 
 func (s *Service) handleMessageReceive(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
+	_ = ctx
+
 	entry, err := buildLoggedEvent(event)
 	if err != nil {
 		return err
 	}
-	return s.handler.Process(entry)
+	if err := s.handler.Process(entry); err != nil {
+		return err
+	}
+
+	if request, ok := desktop.ExtractRequest(entry.MessageText); ok {
+		task, err := s.desktop.Enqueue(entry, request)
+		if err != nil {
+			return err
+		}
+		ack := fmt.Sprintf("桌面 GUI 任务已加入队列，任务号 %s。我会在后台尝试执行，完成后回这里。", task.ID)
+		if err := s.desktop.Reply(task, ack); err != nil {
+			s.logger.Printf("failed to acknowledge desktop task %s: %v", task.ID, err)
+		}
+		return nil
+	}
+
+	s.agent.Dispatch(entry)
+	return nil
+}
+
+func (s *Service) handleMessageRead(ctx context.Context, event *larkim.P2MessageReadV1) error {
+	_ = ctx
+	_ = event
+	return nil
 }
 
 func buildLoggedEvent(event *larkim.P2MessageReceiveV1) (inbound.LoggedEvent, error) {
@@ -145,4 +193,21 @@ func stringValue(v *string) string {
 		return ""
 	}
 	return *v
+}
+
+// DefaultAgentConfig builds the Codex agent config from environment and config files.
+func DefaultAgentConfig() agent.Config {
+	timeoutMinutes := config.GetAgentTimeoutMinutes()
+	if timeoutMinutes <= 0 {
+		timeoutMinutes = 20
+	}
+	return agent.Config{
+		Enabled:        config.GetAgentEnabled(),
+		CodexBinary:    config.GetAgentCodexBinary(),
+		Workspace:      config.GetAgentWorkspace(),
+		Model:          config.GetAgentModel(),
+		AckText:        config.GetAgentAckText(),
+		ResultMaxChars: config.GetAgentResultMaxChars(),
+		Timeout:        time.Duration(timeoutMinutes) * time.Minute,
+	}
 }

@@ -17,6 +17,15 @@ defaults:
 oauth:
   redirect_port: 9999
 
+# Optional local task agent powered by `codex exec`
+agent:
+  enabled: false
+  codex_binary: "codex"
+  workspace: "~/WorkSpace"
+  ack_text: "收到，开始处理。"
+  result_max_chars: 1800
+  timeout_minutes: 20
+
 # Local gateway settings for WebSocket long connections (recommended)
 gateway:
   # JSONL file that stores received message events

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -18,8 +19,11 @@ var gatewayCmd = &cobra.Command{
 }
 
 var (
-	gatewayEventLogPath  string
-	gatewayAutoReplyText string
+	gatewayEventLogPath   string
+	gatewayAutoReplyText  string
+	gatewayAgentEnabled   bool
+	gatewayAgentWorkspace string
+	gatewayDesktopWorker  bool
 )
 
 var gatewayServeCmd = &cobra.Command{
@@ -35,17 +39,26 @@ This mode is similar to OpenClaw's default channel transport:
 Examples:
   lark gateway serve
   lark gateway serve --auto-reply-text "收到：{{text}}"
+  lark gateway serve --agent --agent-workspace ~/WorkSpace
   lark gateway serve --event-log ~/.lark/gateway-events.jsonl`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg := gateway.Config{
 			EventLogPath:  gatewayEventLogPath,
 			AutoReplyText: gatewayAutoReplyText,
+			Agent:         gateway.DefaultAgentConfig(),
+			DesktopWorker: gatewayDesktopWorker,
 		}
 		if cfg.EventLogPath == "" {
 			cfg.EventLogPath = config.GetGatewayEventLogPath()
 		}
 		if cfg.AutoReplyText == "" {
 			cfg.AutoReplyText = config.GetGatewayAutoReplyText()
+		}
+		if cmd.Flags().Changed("agent") {
+			cfg.Agent.Enabled = gatewayAgentEnabled
+		}
+		if strings.TrimSpace(gatewayAgentWorkspace) != "" {
+			cfg.Agent.Workspace = strings.TrimSpace(gatewayAgentWorkspace)
 		}
 
 		service := gateway.New(cfg)
@@ -55,6 +68,9 @@ Examples:
 			"region":                config.GetRegion(),
 			"event_log":             cfg.EventLogPath,
 			"auto_reply_enabled":    cfg.AutoReplyText != "",
+			"agent_enabled":         cfg.Agent.Enabled,
+			"agent_workspace":       cfg.Agent.Workspace,
+			"desktop_worker":        cfg.DesktopWorker,
 			"public_https_required": false,
 		})
 
@@ -70,6 +86,9 @@ Examples:
 func init() {
 	gatewayServeCmd.Flags().StringVar(&gatewayEventLogPath, "event-log", "", "path to JSONL event log file")
 	gatewayServeCmd.Flags().StringVar(&gatewayAutoReplyText, "auto-reply-text", "", "optional plain-text auto-reply template; supports {{text}}, {{chat_id}}, {{message_id}}, {{sender_open_id}}")
+	gatewayServeCmd.Flags().BoolVar(&gatewayAgentEnabled, "agent", false, "dispatch inbound Feishu messages to local codex exec tasks")
+	gatewayServeCmd.Flags().StringVar(&gatewayAgentWorkspace, "agent-workspace", "", "workspace root used when the local Codex agent executes tasks")
+	gatewayServeCmd.Flags().BoolVar(&gatewayDesktopWorker, "desktop-worker", true, "run the local desktop task worker inside the gateway process")
 
 	gatewayCmd.AddCommand(gatewayServeCmd)
 }

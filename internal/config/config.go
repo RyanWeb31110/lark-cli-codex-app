@@ -20,6 +20,15 @@ type Config struct {
 	OAuth struct {
 		RedirectPort int `mapstructure:"redirect_port"`
 	} `mapstructure:"oauth"`
+	Agent struct {
+		Enabled        bool   `mapstructure:"enabled"`
+		CodexBinary    string `mapstructure:"codex_binary"`
+		Workspace      string `mapstructure:"workspace"`
+		Model          string `mapstructure:"model"`
+		AckText        string `mapstructure:"ack_text"`
+		ResultMaxChars int    `mapstructure:"result_max_chars"`
+		TimeoutMinutes int    `mapstructure:"timeout_minutes"`
+	} `mapstructure:"agent"`
 	Gateway struct {
 		EventLog      string `mapstructure:"event_log"`
 		AutoReplyText string `mapstructure:"auto_reply_text"`
@@ -52,10 +61,9 @@ func GetRootDir() string {
 
 // Init initializes the configuration
 func Init() error {
-	// Config directory can be set via LARK_CONFIG_DIR or legacy LARK_CAL_CONFIG_DIR
 	cfgDir = os.Getenv("LARK_CONFIG_DIR")
 	if cfgDir == "" {
-		cfgDir = os.Getenv("LARK_CAL_CONFIG_DIR") // Legacy fallback
+		cfgDir = os.Getenv("LARK_CAL_CONFIG_DIR")
 	}
 	if cfgDir == "" {
 		return fmt.Errorf("LARK_CONFIG_DIR environment variable is not set")
@@ -63,7 +71,6 @@ func Init() error {
 
 	rootDir = filepath.Dir(cfgDir)
 
-	// Create config directory if it doesn't exist
 	if err := os.MkdirAll(cfgDir, 0700); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
@@ -72,20 +79,30 @@ func Init() error {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(cfgDir)
 
-	// Set defaults
 	viper.SetDefault("region", "lark")
 	viper.SetDefault("defaults.timezone", "Asia/Singapore")
 	viper.SetDefault("defaults.reminder_minutes", 15)
 	viper.SetDefault("oauth.redirect_port", 9999)
+	viper.SetDefault("agent.enabled", false)
+	viper.SetDefault("agent.codex_binary", "codex")
+	viper.SetDefault("agent.ack_text", "收到，开始处理。")
+	viper.SetDefault("agent.result_max_chars", 1800)
+	viper.SetDefault("agent.timeout_minutes", 20)
 	viper.SetDefault("gateway.event_log", filepath.Join(cfgDir, "gateway-events.jsonl"))
 	viper.SetDefault("webhook.listen_addr", "0.0.0.0:8080")
 	viper.SetDefault("webhook.path", "/webhook/feishu")
 	viper.SetDefault("webhook.event_log", filepath.Join(cfgDir, "webhook-events.jsonl"))
 
-	// Environment variable bindings
 	viper.SetEnvPrefix("LARK")
 	viper.BindEnv("app_id", "LARK_APP_ID")
 	viper.BindEnv("app_secret", "LARK_APP_SECRET")
+	viper.BindEnv("agent.enabled", "LARK_AGENT_ENABLED")
+	viper.BindEnv("agent.codex_binary", "LARK_AGENT_CODEX_BINARY")
+	viper.BindEnv("agent.workspace", "LARK_AGENT_WORKSPACE")
+	viper.BindEnv("agent.model", "LARK_AGENT_MODEL")
+	viper.BindEnv("agent.ack_text", "LARK_AGENT_ACK_TEXT")
+	viper.BindEnv("agent.result_max_chars", "LARK_AGENT_RESULT_MAX_CHARS")
+	viper.BindEnv("agent.timeout_minutes", "LARK_AGENT_TIMEOUT_MINUTES")
 	viper.BindEnv("gateway.event_log", "LARK_GATEWAY_EVENT_LOG")
 	viper.BindEnv("gateway.auto_reply_text", "LARK_GATEWAY_AUTO_REPLY_TEXT")
 	viper.BindEnv("webhook.listen_addr", "LARK_WEBHOOK_LISTEN")
@@ -94,12 +111,10 @@ func Init() error {
 	viper.BindEnv("webhook.event_log", "LARK_WEBHOOK_EVENT_LOG")
 	viper.BindEnv("webhook.auto_reply_text", "LARK_WEBHOOK_AUTO_REPLY_TEXT")
 
-	// Read config file (if exists)
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return fmt.Errorf("error reading config: %w", err)
 		}
-		// Config file not found is OK, we'll use defaults and env vars
 	}
 
 	cfg = &Config{}
@@ -149,6 +164,61 @@ func GetTimezone() string {
 // GetRedirectPort returns the OAuth redirect port
 func GetRedirectPort() int {
 	return viper.GetInt("oauth.redirect_port")
+}
+
+// GetAgentEnabled returns whether inbound messages should be dispatched to local Codex tasks.
+func GetAgentEnabled() bool {
+	return viper.GetBool("agent.enabled")
+}
+
+// GetAgentCodexBinary returns the codex binary path or command name.
+func GetAgentCodexBinary() string {
+	return strings.TrimSpace(viper.GetString("agent.codex_binary"))
+}
+
+// GetAgentWorkspace returns the workspace root used for Codex tasks.
+func GetAgentWorkspace() string {
+	path := strings.TrimSpace(viper.GetString("agent.workspace"))
+	if path != "" {
+		if !filepath.IsAbs(path) {
+			return filepath.Join(rootDir, path)
+		}
+		return path
+	}
+
+	home, err := os.UserHomeDir()
+	if err == nil {
+		candidate := filepath.Join(home, "WorkSpace")
+		if stat, statErr := os.Stat(candidate); statErr == nil && stat.IsDir() {
+			return candidate
+		}
+	}
+
+	if wd, wdErr := os.Getwd(); wdErr == nil {
+		return wd
+	}
+
+	return rootDir
+}
+
+// GetAgentModel returns the optional model override for Codex tasks.
+func GetAgentModel() string {
+	return strings.TrimSpace(viper.GetString("agent.model"))
+}
+
+// GetAgentAckText returns the acknowledgement text sent immediately after accepting a task.
+func GetAgentAckText() string {
+	return viper.GetString("agent.ack_text")
+}
+
+// GetAgentResultMaxChars returns the maximum reply length for Feishu messages.
+func GetAgentResultMaxChars() int {
+	return viper.GetInt("agent.result_max_chars")
+}
+
+// GetAgentTimeoutMinutes returns the maximum runtime for a single Codex task.
+func GetAgentTimeoutMinutes() int {
+	return viper.GetInt("agent.timeout_minutes")
 }
 
 // GetGatewayEventLogPath returns the JSONL path used for gateway event persistence.
