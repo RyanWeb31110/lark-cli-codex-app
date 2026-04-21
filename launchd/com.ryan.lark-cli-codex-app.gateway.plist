@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.ryan.lark-cli-codex-app.gateway</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/ryan/.local/bin/lark</string>
+    <string>gateway</string>
+    <string>serve</string>
+    <string>--agent</string>
+    <string>--agent-workspace</string>
+    <string>/Users/ryan/WorkSpace</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/ryan/WorkSpace/lark-cli-codex-app</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/ryan/.lark/gateway.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/ryan/.lark/gateway.log</string>
+</dict>
+</plist>
