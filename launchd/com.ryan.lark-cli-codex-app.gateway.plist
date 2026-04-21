@@ -11,6 +11,7 @@
     <string>gateway</string>
     <string>serve</string>
     <string>--agent</string>
+    <string>--desktop-worker=false</string>
     <string>--agent-workspace</string>
     <string>/Users/ryan/WorkSpace</string>
   </array>

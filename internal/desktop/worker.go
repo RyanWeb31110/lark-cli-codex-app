@@ -3,8 +3,12 @@ package desktop
 import (
 	"context"
 	"fmt"
+	"html"
+	"io"
 	"log"
 	"math"
+	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -13,10 +17,25 @@ import (
 )
 
 var (
-	urlPattern         = regexp.MustCompile(`https?://[^\s]+|[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:/[^\s]*)?`)
-	powerPattern       = regexp.MustCompile(`(\d+)\s*的\s*(\d+)\s*次方`)
-	numberTokenPattern = regexp.MustCompile(`\d+(?:\.\d+)?|[()+\-*/^]`)
+	urlPattern             = regexp.MustCompile(`https?://[^\s]+|[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:/[^\s]*)?`)
+	powerPattern           = regexp.MustCompile(`(\d+)\s*的\s*(\d+)\s*次方`)
+	numberTokenPattern     = regexp.MustCompile(`\d+(?:\.\d+)?|[()+\-*/^]`)
+	trendingArticlePattern = regexp.MustCompile(`(?is)<article class="Box-row">(.*?)</article>`)
+	trendingRepoPattern    = regexp.MustCompile(`(?is)<h2 class="h3 lh-condensed">.*?href="/([^"]+)"`)
+	trendingDescPattern    = regexp.MustCompile(`(?is)<p class="col-9 color-fg-muted my-1 [^"]*">\s*(.*?)\s*</p>`)
+	trendingLangPattern    = regexp.MustCompile(`(?is)<span itemprop="programmingLanguage">\s*(.*?)\s*</span>`)
+	trendingStarsPattern   = regexp.MustCompile(`(?is)([0-9,]+)\s+stars today`)
+	htmlTagPattern         = regexp.MustCompile(`(?is)<[^>]+>`)
 )
+
+const githubTrendingURL = "https://github.com/trending?since=daily"
+
+type trendingRepo struct {
+	Name        string
+	Description string
+	Language    string
+	StarsToday  string
+}
 
 type WorkerConfig struct {
 	PollInterval time.Duration
@@ -96,6 +115,9 @@ func executeDesktopTask(request string) (string, error) {
 	if result, handled, err := tryCalculatorTask(text); handled {
 		return result, err
 	}
+	if result, handled, err := tryGitHubTrendingTask(text); handled {
+		return result, err
+	}
 	if result, handled, err := tryOpenURLTask(text); handled {
 		return result, err
 	}
@@ -106,7 +128,56 @@ func executeDesktopTask(request string) (string, error) {
 		return result, err
 	}
 
-	return "", fmt.Errorf("暂时只支持打开/关闭应用、打开链接、以及计算器计算这几类桌面任务")
+	return "", fmt.Errorf("暂时只支持打开/关闭应用、打开链接、GitHub 热门查看，以及计算器计算这几类桌面任务")
+}
+
+func tryGitHubTrendingTask(text string) (string, bool, error) {
+	lower := strings.ToLower(text)
+	if !strings.Contains(lower, "github") {
+		return "", false, nil
+	}
+	if !containsAny(lower, []string{"热门", "trending", "趋势", "hot", "today", "今天"}) {
+		return "", false, nil
+	}
+
+	if err := runCommand("open", githubTrendingURL); err != nil {
+		return "", true, err
+	}
+
+	repos, err := fetchGitHubTrending()
+	if err != nil {
+		return "", true, fmt.Errorf("已打开 GitHub Trending，但拉取热门项目摘要失败：%w", err)
+	}
+	if len(repos) == 0 {
+		return "", true, fmt.Errorf("已打开 GitHub Trending，但没有解析到热门项目")
+	}
+
+	limit := 5
+	if len(repos) < limit {
+		limit = len(repos)
+	}
+
+	lines := make([]string, 0, limit)
+	for i := 0; i < limit; i++ {
+		repo := repos[i]
+		line := fmt.Sprintf("%d. %s", i+1, repo.Name)
+		details := make([]string, 0, 2)
+		if repo.StarsToday != "" {
+			details = append(details, "今日 +"+repo.StarsToday)
+		}
+		if repo.Language != "" {
+			details = append(details, repo.Language)
+		}
+		if len(details) > 0 {
+			line += "（" + strings.Join(details, "，") + "）"
+		}
+		if repo.Description != "" {
+			line += "：" + repo.Description
+		}
+		lines = append(lines, line)
+	}
+
+	return "已打开 GitHub Trending。今天较热门的项目有：\n" + strings.Join(lines, "\n"), true, nil
 }
 
 func tryCalculatorTask(text string) (string, bool, error) {
@@ -226,6 +297,130 @@ func runCommand(name string, args ...string) error {
 		return fmt.Errorf("%s", msg)
 	}
 	return nil
+}
+
+func fetchGitHubTrending() ([]trendingRepo, error) {
+	body, err := fetchGitHubTrendingWithCurl()
+	if err == nil {
+		repos := parseGitHubTrending(body)
+		if len(repos) > 0 {
+			return repos, nil
+		}
+	}
+
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{
+			Proxy: nil,
+		},
+	}
+
+	req, err := http.NewRequest(http.MethodGet, githubTrendingURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("构造 GitHub 请求失败: %w", err)
+	}
+	req.Header.Set("User-Agent", "lark-cli-codex-app/desktop-helper")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("请求 GitHub Trending 失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub Trending 返回状态 %d", resp.StatusCode)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取 GitHub Trending 页面失败: %w", err)
+	}
+
+	repos := parseGitHubTrending(string(bodyBytes))
+	if len(repos) == 0 {
+		return nil, fmt.Errorf("没有解析到 GitHub 热门仓库")
+	}
+	return repos, nil
+}
+
+func fetchGitHubTrendingWithCurl() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "/usr/bin/curl", "-fsSL", githubTrendingURL)
+	cmd.Env = filteredEnvWithoutProxy()
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("curl 拉取 GitHub Trending 超时")
+	}
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return "", fmt.Errorf("%s", msg)
+	}
+	return string(output), nil
+}
+
+func filteredEnvWithoutProxy() []string {
+	env := os.Environ()
+	filtered := make([]string, 0, len(env))
+	for _, item := range env {
+		lower := strings.ToLower(item)
+		if strings.HasPrefix(lower, "http_proxy=") ||
+			strings.HasPrefix(lower, "https_proxy=") ||
+			strings.HasPrefix(lower, "all_proxy=") ||
+			strings.HasPrefix(lower, "no_proxy=") {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
+}
+
+func parseGitHubTrending(page string) []trendingRepo {
+	articles := trendingArticlePattern.FindAllStringSubmatch(page, -1)
+	repos := make([]trendingRepo, 0, len(articles))
+
+	for _, article := range articles {
+		if len(article) < 2 {
+			continue
+		}
+		block := article[1]
+
+		match := trendingRepoPattern.FindStringSubmatch(block)
+		if len(match) < 2 {
+			continue
+		}
+
+		repo := trendingRepo{
+			Name: cleanHTMLText(match[1]),
+		}
+
+		if desc := trendingDescPattern.FindStringSubmatch(block); len(desc) >= 2 {
+			repo.Description = cleanHTMLText(desc[1])
+		}
+		if lang := trendingLangPattern.FindStringSubmatch(block); len(lang) >= 2 {
+			repo.Language = cleanHTMLText(lang[1])
+		}
+		if stars := trendingStarsPattern.FindStringSubmatch(block); len(stars) >= 2 {
+			repo.StarsToday = cleanHTMLText(stars[1])
+		}
+
+		repos = append(repos, repo)
+	}
+
+	return repos
+}
+
+func cleanHTMLText(value string) string {
+	value = html.UnescapeString(value)
+	value = htmlTagPattern.ReplaceAllString(value, " ")
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.ReplaceAll(value, "\t", " ")
+	value = strings.TrimSpace(value)
+	return strings.Join(strings.Fields(value), " ")
 }
 
 func isAccessibilityDenied(err error) bool {

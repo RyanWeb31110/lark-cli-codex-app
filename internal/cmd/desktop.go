@@ -1,6 +1,11 @@
 package cmd
 
 import (
+	"context"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"github.com/spf13/cobra"
 	"github.com/yjwong/lark-cli/internal/desktop"
 	"github.com/yjwong/lark-cli/internal/output"
@@ -15,6 +20,41 @@ var desktopCmd = &cobra.Command{
 var desktopTasksCmd = &cobra.Command{
 	Use:   "tasks",
 	Short: "Manage queued desktop tasks",
+}
+
+var desktopHelperCmd = &cobra.Command{
+	Use:   "helper",
+	Short: "Run the foreground desktop helper",
+	Long:  "Run the foreground desktop helper that polls the local GUI task queue and executes desktop actions from an approved GUI session.",
+}
+
+var desktopHelperPollSeconds int
+
+var desktopHelperServeCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Run the foreground desktop helper loop",
+	Long: `Run the foreground desktop helper loop.
+
+Use this from a GUI-approved foreground session such as Terminal or Codex Desktop
+when you want queued Feishu desktop tasks to perform real click/type actions.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		output.JSON(map[string]any{
+			"ok":           true,
+			"mode":         "desktop-helper",
+			"queue":        "default",
+			"poll_seconds": desktopHelperPollSeconds,
+		})
+
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+
+		worker := desktop.NewWorker(desktop.DefaultQueue(), nil, desktop.WorkerConfig{
+			PollInterval: time.Duration(desktopHelperPollSeconds) * time.Second,
+		})
+		if err := worker.Serve(ctx); err != nil {
+			output.Fatal("DESKTOP_HELPER_ERROR", err)
+		}
+	},
 }
 
 var desktopTasksPopCmd = &cobra.Command{
@@ -94,5 +134,10 @@ func init() {
 	desktopTasksCmd.AddCommand(desktopTasksPopCmd)
 	desktopTasksCmd.AddCommand(desktopTasksCompleteCmd)
 	desktopTasksCmd.AddCommand(desktopTasksFailCmd)
+
+	desktopHelperServeCmd.Flags().IntVar(&desktopHelperPollSeconds, "poll-seconds", 2, "how often the helper checks for new queued tasks")
+	desktopHelperCmd.AddCommand(desktopHelperServeCmd)
+
 	desktopCmd.AddCommand(desktopTasksCmd)
+	desktopCmd.AddCommand(desktopHelperCmd)
 }

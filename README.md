@@ -106,7 +106,7 @@ lark gateway serve \
   --agent-workspace ~/WorkSpace
 ```
 
-Desktop GUI tasks use a separate queue and are processed by the built-in local desktop worker. The `/gui ` prefix is still supported, but no longer required. Plain desktop requests such as the following will also be detected automatically:
+Desktop GUI tasks use a separate queue. The `/gui ` prefix is still supported, but no longer required. Plain desktop requests such as the following will also be detected automatically:
 
 ```text
 打开 Safari，然后访问 openai.com
@@ -122,7 +122,7 @@ What it does:
 - Optionally replies to incoming messages using the bot
 - Optionally dispatches inbound messages to local `codex exec` tasks and replies with the result
 - Routes explicit `/gui ...` messages or detected desktop-operation requests into a dedicated local desktop task queue
-- Runs a local desktop worker that automatically picks up queued GUI tasks
+- Queues desktop GUI tasks for a separate foreground helper
 
 Typical setup:
 
@@ -133,10 +133,16 @@ Typical setup:
 
 If you want the bot to trigger local Codex tasks instead of behaving like a plain echo bot, enable the `agent` section in `config.yaml` or start with `--agent`.
 
+For real click/type GUI work, keep the background gateway focused on receiving Feishu messages, then run the foreground helper from a GUI-approved session:
+
+```bash
+lark desktop helper serve
+```
+
 Current limitation:
 
 - Opening apps and links works directly.
-- Keyboard-driven GUI actions may require granting macOS Accessibility permission to the process running `osascript`. Without that permission, the worker falls back to opening the app and replying with the computed result when possible.
+- Keyboard-driven GUI actions may require granting macOS Accessibility permission to the foreground app that runs `lark desktop helper serve` (for example Terminal or Codex Desktop). Without that permission, the helper falls back to opening the app and replying with the computed result when possible.
 
 ### Desktop Queue Helpers
 

@@ -88,7 +88,7 @@ func init() {
 	gatewayServeCmd.Flags().StringVar(&gatewayAutoReplyText, "auto-reply-text", "", "optional plain-text auto-reply template; supports {{text}}, {{chat_id}}, {{message_id}}, {{sender_open_id}}")
 	gatewayServeCmd.Flags().BoolVar(&gatewayAgentEnabled, "agent", false, "dispatch inbound Feishu messages to local codex exec tasks")
 	gatewayServeCmd.Flags().StringVar(&gatewayAgentWorkspace, "agent-workspace", "", "workspace root used when the local Codex agent executes tasks")
-	gatewayServeCmd.Flags().BoolVar(&gatewayDesktopWorker, "desktop-worker", true, "run the local desktop task worker inside the gateway process")
+	gatewayServeCmd.Flags().BoolVar(&gatewayDesktopWorker, "desktop-worker", false, "run the local desktop task worker inside the gateway process")
 
 	gatewayCmd.AddCommand(gatewayServeCmd)
 }
