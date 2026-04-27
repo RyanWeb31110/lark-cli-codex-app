@@ -1,96 +1,150 @@
 # lark-cli-codex-app
 
-A Codex-friendly fork of [`yjwong/lark-cli`](https://github.com/yjwong/lark-cli): a CLI for interacting with Lark/Feishu APIs, bundled with reusable AI assistant skills.
+一个面向 Codex 的飞书/Lark 本地控制项目。它基于 [`yjwong/lark-cli`](https://github.com/yjwong/lark-cli)，保留上游 Go CLI 和技能定义，并补充了 Codex 插件元数据、本地安装脚本、飞书事件网关、Codex 任务分发和桌面任务队列。
 
-This fork keeps the upstream Go CLI and skill definitions, then adds the metadata and installation flow needed to publish it as a Codex-oriented open source plugin project.
+这个项目的核心不是简单地“让 Codex 调用飞书 API”，而是把飞书/Lark 变成 Codex App 的远程入口和协作工作台：
 
-## Why This Tool?
-
-The official Lark MCP server exists, but its tools are not token-efficient. Each tool call returns verbose responses that consume significant context window space when used with AI assistants.
-
-This CLI addresses that by:
-
-- **Returning compact JSON** - Structured output optimized for programmatic consumption
-- **Providing markdown conversion** - Documents are converted to markdown (~2-3x smaller than raw block structures)
-- **Supporting selective queries** - Fetch only what you need (e.g., just event IDs, just document titles)
-
-The result: AI assistants can interact with Lark using fewer tokens, leaving more context for actual work.
-
-## Features
-
-- **Calendar** - List, create, update, delete events; check availability; find common free time; RSVP
-- **Contacts** - Look up users by ID, search by name, list department members
-- **Documents** - Read documents as markdown, list folders, resolve wiki nodes, get comments
-- **Messages** - Retrieve chat history, download attachments, send messages, add/list/remove reactions
-- **Gateway** - Receive Feishu/Lark bot message events locally through WebSocket long connections, optionally auto-reply
-- **Agent Bridge** - Dispatch inbound Feishu messages to local `codex exec` tasks and send results back to chat
-- **Desktop Queue** - Route Feishu desktop-operation requests into a local desktop-GUI task queue for this Codex desktop thread
-- **Webhook** - Optional fallback for event subscriptions when you explicitly want callback mode
-- **Mail** - Read and search emails via IMAP with local caching
-- **Minutes** - Get meeting recording metadata, export transcripts, download media
-- **Sheets** - Read spreadsheet metadata and content from Lark Sheets
-- **Bitable** - Query records and metadata from Lark Bitable
-
-## What This Fork Adds
-
-- A Codex plugin manifest at [`.codex-plugin/plugin.json`](.codex-plugin/plugin.json)
-- A Codex install helper at [`scripts/install-codex-plugin.sh`](scripts/install-codex-plugin.sh)
-- README guidance for installing the bundled skills into Codex or Claude Code
-
-## Quick Start
-
-1. Create a Lark app at https://open.larksuite.com (or Feishu app at https://open.feishu.cn) with appropriate permissions
-2. Copy `config.example.yaml` to `.lark/config.yaml` and add your App ID
-3. Set `region` in `.lark/config.yaml` to `lark` (default) or `feishu`
-4. Set `LARK_APP_SECRET` environment variable
-5. Run `./lark auth login` to authenticate
-6. Start using: `./lark cal list --week`
-
-See [USAGE.md](USAGE.md) for full documentation.
-
-## Building
-
-```bash
-make build    # Build binary to ./lark
-make test     # Run tests
-make install  # Install to $GOPATH/bin
+```text
+人在飞书/Lark 中发起任务
+  -> lark gateway / webhook 接收消息事件
+  -> 本地 Codex App / codex exec 执行任务
+  -> Codex 使用 computer use 操作电脑、浏览器、终端和文件
+  -> Codex 使用 lark-cli + skills 操作飞书/Lark
+  -> 结果回写到飞书/Lark 对话、文档、日历、表格或多维表格
 ```
 
-## Usage with Codex
+换句话说，这个项目并不是重新实现一个 agent，而是依托 Codex App 原生的本地执行、代码理解、工具调用、computer use 和未来插件生态潜力，把飞书/Lark 接入为 Codex 的远程交互入口、任务调度入口和团队协作回写界面。
 
-This repository can be used as a Codex plugin project because it includes:
+![飞书控制 Codex App，Codex 回写飞书](./assets/readme/closed-loop.png)
 
-- A plugin manifest in `.codex-plugin/plugin.json`
-- Bundled skills in `skills/`
-- A local install helper for copying those skills into your Codex home
+## 项目定位
 
-### Install for Codex
+多数 chat-to-agent 项目只解决单向链路：人在聊天软件里发一条消息，本地 agent 执行后回复结果。
 
-Build the CLI and install the bundled skills into your local Codex home:
+`lark-cli-codex-app` 想做的是更完整的闭环：
+
+- **人在飞书里发起任务**：可以在单聊、群聊或移动端飞书里给 Codex 下指令。
+- **Codex 在本机执行**：Codex App 或 `codex exec` 在你的本地机器上运行，拥有项目文件、终端、浏览器和开发工具上下文。
+- **Codex 操作电脑**：通过桌面任务队列和 computer use，Codex 可以处理需要前台 GUI 的任务。
+- **Codex 操作飞书**：通过 `lark-cli` 和内置 skills，Codex 可以读取和更新飞书消息、文档、日历、表格、多维表格、邮件和妙记。
+- **结果回到飞书**：执行结果、摘要、任务状态或后续动作可以回写到原来的飞书对话或相关协作对象中。
+
+目标是基于 Codex App 自身能力持续增强的方向，让飞书/Lark 成为 Codex 的本地控制面和协作延展层，而不是只做一个普通机器人。
+
+## 为什么需要这个项目？
+
+官方 Lark MCP Server 可以使用，但对 AI assistant 来说不够省上下文。很多工具调用会返回较大的原始结构，容易占用大量 context window。
+
+这个 CLI 的设计重点是让 Codex 以更低成本操作飞书/Lark：
+
+- **紧凑 JSON 输出**：返回结构化、易解析、适合程序消费的结果。
+- **文档 Markdown 转换**：将飞书文档转换成 Markdown，比原始 block 结构更适合 assistant 阅读。
+- **选择性查询**：只取真正需要的信息，例如只取事件 ID、文档标题或部分记录字段。
+- **技能化调用**：把常见飞书操作封装成 Codex/Claude Code 可复用的 skills。
+
+这样 Codex 可以把更多上下文留给真正的工作，而不是消耗在冗长 API payload 上。
+
+## 典型场景
+
+- 在飞书群里让 Codex 排查一个 bug。Codex 在本地读取仓库、运行测试、总结原因，并把结果回复到群里。
+- 出门时用手机飞书给本机 Codex 发任务。Codex 在你的本地 workspace 里继续工作，完成后回报进度。
+- 让 Codex 总结一篇飞书文档，提取 action items，并在飞书里创建后续任务或回复摘要。
+- 让 Codex 结合本地代码上下文和飞书数据，例如会议纪要、聊天记录、日历、表格、多维表格，生成更完整的判断。
+- 通过飞书触发桌面操作请求，例如打开浏览器、进入某个网页、准备一个需要前台处理的 GUI 任务。
+
+## 项目方向
+
+这个项目会继续围绕“飞书/Lark 控制 Codex App，并让 Codex App 反过来操作飞书/Lark”这个闭环演进：
+
+- 从飞书/Lark 接收个人或群组任务。
+- 将任务路由到本地 Codex App 或 `codex exec`。
+- 保留本地事件日志，便于排查、回放和调试。
+- 将桌面 GUI 请求交给前台 helper 处理。
+- 让 Codex 将结构化结果回写到飞书/Lark 中团队正在工作的地方。
+
+## 功能
+
+- **日历**：列出、创建、更新、删除日程；查询忙闲；寻找共同空闲时间；回复邀请。
+- **通讯录**：按 ID 查询用户，按姓名搜索用户，列出部门成员。
+- **文档**：读取文档 Markdown，列出文件夹，解析知识库节点，获取评论。
+- **消息**：读取聊天历史，下载附件，发送消息，管理表情回应。
+- **网关**：通过飞书/Lark WebSocket 长连接在本地接收机器人消息事件。
+- **Agent Bridge**：将飞书消息分发给本地 `codex exec` 任务，并把结果回复到聊天中。
+- **桌面队列**：将飞书中的桌面操作请求路由到本地 Codex Desktop 前台任务队列。
+- **Webhook**：在需要 callback 模式时提供本地 webhook server 作为可选方案。
+- **邮件**：通过 IMAP 本地缓存读取和搜索邮件。
+- **妙记**：获取会议录制信息，导出转写文本，下载音视频。
+- **表格**：读取飞书电子表格元数据和内容。
+- **多维表格**：查询飞书多维表格记录和元数据。
+
+## 这个 fork 增加了什么？
+
+- Codex 插件清单： [`.codex-plugin/plugin.json`](.codex-plugin/plugin.json)
+- Codex 本地安装脚本： [`scripts/install-codex-plugin.sh`](scripts/install-codex-plugin.sh)
+- 可复制到 Codex 或 Claude Code 的内置 skills： [`skills/`](skills/)
+- 飞书/Lark 本地 WebSocket 网关，用于把聊天消息路由到 Codex 任务。
+- 桌面任务队列，用于把 GUI 请求转交给前台 Codex Desktop 会话处理。
+
+## 快速开始
+
+1. 在 https://open.larksuite.com 创建 Lark 应用，或在 https://open.feishu.cn 创建飞书应用，并配置所需权限。
+2. 将 `config.example.yaml` 复制到 `.lark/config.yaml`，填入 App ID。
+3. 在 `.lark/config.yaml` 中设置 `region`：国际版 Lark 使用 `lark`，飞书使用 `feishu`。
+4. 设置 `LARK_APP_SECRET` 环境变量。
+5. 运行 `./lark auth login` 完成授权。
+6. 开始使用，例如：`./lark cal list --week`
+
+完整命令说明见 [USAGE.md](USAGE.md)。
+
+## 构建
+
+```bash
+make build    # 构建二进制到 ./lark
+make test     # 运行测试
+make install  # 安装到 $GOPATH/bin
+```
+
+## 在 Codex 中使用
+
+这个仓库可以作为 Codex 插件项目使用，因为它包含：
+
+- `.codex-plugin/plugin.json` 插件清单
+- `skills/` 内置技能目录
+- 用于复制技能和安装 CLI 的本地安装脚本
+
+### 安装到 Codex
+
+构建 CLI，并将内置 skills 安装到本地 Codex home：
 
 ```bash
 ./scripts/install-codex-plugin.sh
 ```
 
-By default this will:
+默认行为：
 
-- Build `lark` into `./lark`
-- Install the binary into `~/.local/bin/lark` with a wrapper that loads `~/.lark/env.sh`
-- Copy the bundled skills into `${CODEX_HOME:-~/.codex}/skills`
+- 构建 `lark` 到 `./lark`
+- 将二进制安装到 `~/.local/bin/lark`，并通过 wrapper 自动加载 `~/.lark/env.sh`
+- 将内置 skills 复制到 `${CODEX_HOME:-~/.codex}/skills`
 
-If a skill already exists, the installer leaves it alone unless you pass `--force`.
+如果目标 skill 已存在，安装脚本会跳过它。需要覆盖时可使用：
 
-After installing, restart Codex so it picks up the new skills.
+```bash
+./scripts/install-codex-plugin.sh --force
+```
 
-## Gateway Mode
+安装后重启 Codex，让新的 skills 生效。
 
-This fork now includes a local gateway that uses Feishu/Lark WebSocket event subscriptions:
+## Gateway 模式
+
+Gateway 模式是推荐的本地控制方式。它使用飞书/Lark WebSocket 事件订阅，不需要公网 callback URL：
+
+![网关模式：本地优先的控制链路](./assets/readme/gateway-mode.png)
 
 ```bash
 lark gateway serve
 ```
 
-Useful flags:
+常用参数：
 
 ```bash
 lark gateway serve \
@@ -98,7 +152,7 @@ lark gateway serve \
   --auto-reply-text "收到：{{text}}"
 ```
 
-Or enable the local task agent:
+启用本地 Codex agent：
 
 ```bash
 lark gateway serve \
@@ -106,47 +160,48 @@ lark gateway serve \
   --agent-workspace ~/WorkSpace
 ```
 
-Desktop GUI tasks use a separate queue. The `/gui ` prefix is still supported, but no longer required. Plain desktop requests such as the following will also be detected automatically:
+Desktop GUI 请求会进入单独队列。仍然支持 `/gui ` 前缀，但普通桌面请求也会被自动识别，例如：
 
 ```text
 打开 Safari，然后访问 openai.com
 ```
 
-The gateway will queue that request and acknowledge it with a task id instead of sending it to `codex exec`.
+这类请求会被 gateway 加入桌面任务队列，并回复 task id，而不是直接发送给 `codex exec`。
 
-What it does:
+Gateway 做的事情：
 
-- Opens an outbound WebSocket connection to Feishu/Lark
-- Receives `im.message.receive_v1` events without any public callback URL
-- Appends incoming message events to a local JSONL file
-- Optionally replies to incoming messages using the bot
-- Optionally dispatches inbound messages to local `codex exec` tasks and replies with the result
-- Routes explicit `/gui ...` messages or detected desktop-operation requests into a dedicated local desktop task queue
-- Queues desktop GUI tasks for a separate foreground helper
+- 通过 outbound WebSocket 连接飞书/Lark。
+- 接收 `im.message.receive_v1` 消息事件，不需要公网回调地址。
+- 将收到的消息事件追加到本地 JSONL 日志。
+- 可选：用机器人自动回复消息。
+- 可选：将飞书消息分发给本地 `codex exec` 执行，并把结果回复到聊天中。
+- 让 Codex 任务通过 `lark` 命令和 Codex skills 回写飞书/Lark。
+- 将显式 `/gui ...` 消息或自动识别出的桌面操作请求放入桌面任务队列。
 
-Typical setup:
+典型设置：
 
-1. In the Feishu/Lark app console, enable event subscriptions with **persistent connection / WebSocket** mode.
-2. Subscribe to the message receive event (`im.message.receive_v1` / receive message).
-3. Make sure the bot is added to the target chat.
-4. Run `lark gateway serve` locally.
+1. 在飞书/Lark 开放平台后台启用事件订阅，并选择 **长连接 / WebSocket** 模式。
+2. 订阅消息接收事件：`im.message.receive_v1`。
+3. 确认机器人已加入目标聊天。
+4. 在本地运行 `lark gateway serve`。
 
-If you want the bot to trigger local Codex tasks instead of behaving like a plain echo bot, enable the `agent` section in `config.yaml` or start with `--agent`.
+如果希望机器人触发本地 Codex 任务，而不是只做普通 echo bot，可在 `config.yaml` 中启用 `agent` 配置，或启动时添加 `--agent`。
 
-For real click/type GUI work, keep the background gateway focused on receiving Feishu messages, then run the foreground helper from a GUI-approved session:
+如需真正执行点击、输入等前台 GUI 操作，请让后台 gateway 专注于接收飞书消息，然后在一个有 GUI 权限的前台会话中运行：
 
 ```bash
 lark desktop helper serve
 ```
 
-Current limitation:
+当前限制：
 
-- Opening apps and links works directly.
-- Keyboard-driven GUI actions may require granting macOS Accessibility permission to the foreground app that runs `lark desktop helper serve` (for example Terminal or Codex Desktop). Without that permission, the helper falls back to opening the app and replying with the computed result when possible.
+- 打开应用和链接可以直接工作。
+- 键盘驱动的 GUI 操作可能需要给运行 `lark desktop helper serve` 的前台应用授予 macOS Accessibility 权限，例如 Terminal 或 Codex Desktop。
+- 如果没有该权限，helper 会尽量退化为打开应用或返回可计算结果。
 
-### Desktop Queue Helpers
+### 桌面队列辅助命令
 
-The desktop queue can be inspected and driven with:
+桌面队列可以用下面的命令查看和驱动：
 
 ```bash
 lark desktop tasks pop
@@ -154,17 +209,17 @@ lark desktop tasks complete --id <task-id> --result "done" --reply
 lark desktop tasks fail --id <task-id> --error "why" --reply
 ```
 
-This is the recommended local development path because it does not require a public HTTPS tunnel.
+这是推荐的本地开发路径，因为它不需要公网 HTTPS tunnel。
 
-## Webhook Mode
+## Webhook 模式
 
-This fork still includes a local webhook server for Feishu/Lark event subscriptions when you explicitly need callback mode:
+当你明确需要 callback 模式时，可以使用本地 webhook server：
 
 ```bash
 lark webhook serve
 ```
 
-Useful flags:
+常用参数：
 
 ```bash
 lark webhook serve \
@@ -174,64 +229,65 @@ lark webhook serve \
   --auto-reply-text "收到：{{text}}"
 ```
 
-What it does:
+Webhook 做的事情：
 
-- Handles URL verification (`challenge`) callbacks
-- Accepts plaintext `im.message.receive_v1` events
-- Appends incoming message events to a local JSONL file
-- Optionally replies to incoming messages using the bot
+- 处理 URL verification 的 `challenge` 回调。
+- 接收明文 `im.message.receive_v1` 事件。
+- 将收到的消息事件追加到本地 JSONL 日志。
+- 可选：用机器人回复收到的消息。
 
-Current limitation:
+当前限制：
 
-- Encrypted callbacks are not supported yet, so leave the Feishu/Lark **Encrypt Key** blank for this version
+- 暂不支持加密 callback。本版本中请将飞书/Lark 后台的 **Encrypt Key** 留空。
 
-Typical setup:
+典型设置：
 
-1. Expose your local server through a public HTTPS tunnel or reverse proxy.
-2. In the Feishu/Lark app console, set the request URL to your public URL plus the configured webhook path.
-3. If you set a verification token in the app console, pass the same value through `webhook.verification_token` or `--token`.
-4. Subscribe to the message receive event (`im.message.receive_v1` / receive message).
-5. Add the bot to the target chat.
+1. 通过公网 HTTPS tunnel 或反向代理暴露本地 server。
+2. 在飞书/Lark 应用后台将 request URL 设置为公网地址加 webhook path。
+3. 如果后台配置了 verification token，请在 `webhook.verification_token` 或 `--token` 中使用相同值。
+4. 订阅消息接收事件：`im.message.receive_v1`。
+5. 将机器人加入目标聊天。
 
-## Usage with Claude Code
+## 在 Claude Code 中使用
 
-This tool is designed to be invoked via Claude Code skills. Pre-built skill definitions are included in the `skills/` directory.
+这个工具也可以通过 Claude Code skills 调用。预置 skill 定义位于 `skills/` 目录。
 
-### Installing Skills
+### 安装 Skills
 
-Copy the skill directories to your assistant skills location:
+将 skill 目录复制到对应 assistant 的 skills 位置：
 
 ```bash
-# Codex user-wide
+# Codex 用户级
 cp -r skills/* ~/.codex/skills/
 
-# Claude Code project-specific
+# Claude Code 项目级
 cp -r skills/* /path/to/your/project/.claude/skills/
 
-# Claude Code user-wide
+# Claude Code 用户级
 cp -r skills/* ~/.claude/skills/
 ```
 
-Available skills:
-- `bitable` - Read Bitable app metadata and records
-- `calendar` - Manage calendar events, check availability, RSVP
-- `contacts` - Look up users and departments
-- `documents` - Read documents, list folders, browse wikis
-- `messages` - Retrieve chat history, download attachments, send messages to users and chats
-- `email` - Read and search emails via IMAP with local caching
-- `minutes` - Get meeting recordings, export transcripts, download media
-- `sheets` - Inspect Lark Sheets data
+可用 skills：
 
-### Configuration
+- `bitable`：读取多维表格 app 元数据和记录。
+- `calendar`：管理日历事件，查询忙闲，回复邀请。
+- `contacts`：查询用户和部门。
+- `documents`：读取文档，列出文件夹，浏览知识库。
+- `messages`：读取聊天记录，下载附件，向用户或群聊发送消息。
+- `email`：通过 IMAP 本地缓存读取和搜索邮件。
+- `minutes`：获取会议录制，导出转写文本，下载媒体。
+- `sheets`：读取飞书电子表格数据。
 
-The skills assume `lark` is in your PATH. If not, you can either:
+### 配置
 
-1. Add the binary location to your PATH
-2. Edit the skill files to use the full path
-3. Set `LARK_CONFIG_DIR` environment variable to point to your `.lark/` config directory
+skills 默认假设 `lark` 已在 `PATH` 中。如果不在，可以选择：
 
-The JSON output format makes it straightforward for AI assistants to parse responses and take action.
+1. 将 `lark` 所在目录加入 `PATH`。
+2. 修改 skill 文件，使用 `lark` 的完整路径。
+3. 设置 `LARK_CONFIG_DIR` 环境变量，指向你的 `.lark/` 配置目录。
 
-## License
+CLI 的 JSON 输出格式让 AI assistant 更容易解析结果并继续执行动作。
 
-MIT - see [LICENSE](LICENSE)
+## 许可证
+
+MIT，详见 [LICENSE](LICENSE)。
