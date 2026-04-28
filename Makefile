@@ -1,4 +1,4 @@
-.PHONY: build clean run test deps release-local
+.PHONY: build clean run test deps
 
 BINARY_NAME=lark
 BUILD_DIR=.
@@ -36,7 +36,3 @@ install:
 # Install to vault tools/bin
 install-local:
 	go build -ldflags "$(LDFLAGS)" -o ../bin/lark ./cmd/lark
-
-# Test release locally (requires goreleaser installed)
-release-local:
-	goreleaser release --snapshot --clean
