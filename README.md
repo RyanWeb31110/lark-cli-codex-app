@@ -31,6 +31,24 @@
 
 目标是基于 Codex App 自身能力持续增强的方向，让飞书/Lark 成为 Codex 的本地控制面和协作延展层，而不是只做一个普通机器人。
 
+## 为什么选择 Codex App？
+
+OpenClaw、Hermes 这类项目更像是从 agent runtime 开始构建一套完整的通用助理系统：长期运行、记忆、任务调度、工具编排和多入口交互都由项目自身承载。这条路线很强，也很适合做通用个人助理。
+
+`lark-cli-codex-app` 选择了另一种边界：不重新造一个 agent runtime，而是依托 Codex App 已有并持续演进的原生能力，把飞书/Lark 接成 Codex 的远程控制入口和团队协作界面。
+
+Codex App 本身更贴近真实工程任务：它理解本地代码上下文，可以使用终端、文件、浏览器、computer use、skills、多任务和未来插件生态。这个项目更希望把精力放在“飞书/Lark 如何可靠地触发 Codex、Codex 如何把结果回写到飞书/Lark”这条链路上。
+
+也就是说：
+
+```text
+飞书/Lark 负责发起任务、团队协作和结果承接
+Codex App 负责本地执行、代码理解、工具调用和 computer use
+lark-cli-codex-app 负责把两边连成闭环
+```
+
+未来 Codex App 的本地执行、skills、computer use、多 agent 和自动化能力越强，这个项目能承接的飞书协作场景也会越多。
+
 ## 为什么需要这个项目？
 
 官方 Lark MCP Server 可以使用，但对 AI assistant 来说不够省上下文。很多工具调用会返回较大的原始结构，容易占用大量 context window。
