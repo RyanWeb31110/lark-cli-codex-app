@@ -36,7 +36,7 @@ func TestExtractRequestIgnoresCapabilityQuestion(t *testing.T) {
 }
 
 func TestExtractRequestIgnoresTerminalTask(t *testing.T) {
-	request, ok := ExtractRequest("到 /Users/ryan/WorkSpace 看一下 git status")
+	request, ok := ExtractRequest("到 /Users/alice/WorkSpace 看一下 git status")
 	if ok || request != "" {
 		t.Fatalf("unexpected terminal routing result: ok=%v request=%q", ok, request)
 	}
