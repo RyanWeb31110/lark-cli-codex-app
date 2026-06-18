@@ -2,11 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -96,7 +98,7 @@ func (r *Runner) execute(entry inbound.LoggedEvent) (string, error) {
 	defer os.RemoveAll(tempDir)
 
 	outputFile := filepath.Join(tempDir, "last-message.txt")
-	prompt := buildPrompt(entry, r.cfg.ResultMaxChars)
+	prompt := r.buildPrompt(entry, r.cfg.ResultMaxChars)
 
 	args := []string{
 		"-a", "never",
@@ -114,7 +116,13 @@ func (r *Runner) execute(entry inbound.LoggedEvent) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.cfg.Timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, r.cfg.CodexBinary, args...)
+	codexBinary, err := resolveCodexBinary(r.cfg.CodexBinary)
+	if err != nil {
+		return "", err
+	}
+
+	cmd := exec.CommandContext(ctx, codexBinary, args...)
+	cmd.Env = codexEnv(os.Environ())
 	output, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
 		return "", fmt.Errorf("任务超时，超过 %s", r.cfg.Timeout)
@@ -140,6 +148,50 @@ func (r *Runner) execute(entry inbound.LoggedEvent) (string, error) {
 	return trimForFeishu(result, r.cfg.ResultMaxChars), nil
 }
 
+func resolveCodexBinary(configured string) (string, error) {
+	candidates := []string{}
+	if strings.TrimSpace(configured) != "" {
+		candidates = append(candidates, strings.TrimSpace(configured))
+	}
+	candidates = append(candidates,
+		"/opt/homebrew/bin/codex",
+		"/Users/macmini_no1/bin/codex",
+		"codex",
+	)
+
+	for _, candidate := range candidates {
+		if filepath.IsAbs(candidate) {
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+				return candidate, nil
+			}
+			continue
+		}
+		if resolved, err := exec.LookPath(candidate); err == nil {
+			return resolved, nil
+		}
+	}
+
+	return "", fmt.Errorf("找不到 Codex CLI，请确认 /opt/homebrew/bin/codex 或 ~/bin/codex 存在")
+}
+
+func codexEnv(base []string) []string {
+	const prefix = "/opt/homebrew/bin:/opt/homebrew/sbin:/Users/macmini_no1/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+	env := make([]string, 0, len(base)+1)
+	replaced := false
+	for _, item := range base {
+		if strings.HasPrefix(item, "PATH=") {
+			env = append(env, "PATH="+prefix+":"+strings.TrimPrefix(item, "PATH="))
+			replaced = true
+			continue
+		}
+		env = append(env, item)
+	}
+	if !replaced {
+		env = append(env, "PATH="+prefix)
+	}
+	return env
+}
+
 func (r *Runner) reply(entry inbound.LoggedEvent, text string) error {
 	content, err := buildTextContent(trimForFeishu(text, r.cfg.ResultMaxChars))
 	if err != nil {
@@ -149,7 +201,20 @@ func (r *Runner) reply(entry inbound.LoggedEvent, text string) error {
 	return err
 }
 
+func (r *Runner) buildPrompt(entry inbound.LoggedEvent, resultMaxChars int) string {
+	conversationContext, err := r.conversationContext(entry)
+	if err != nil {
+		r.logger.Printf("failed to fetch conversation context for message_id=%s: %v", entry.MessageID, err)
+		conversationContext = "（无法读取飞书话题历史，本次仅使用当前消息。）"
+	}
+	return buildPromptWithContext(entry, resultMaxChars, conversationContext)
+}
+
 func buildPrompt(entry inbound.LoggedEvent, resultMaxChars int) string {
+	return buildPromptWithContext(entry, resultMaxChars, formatLoggedFallback(entry))
+}
+
+func buildPromptWithContext(entry inbound.LoggedEvent, resultMaxChars int, conversationContext string) string {
 	return strings.TrimSpace(fmt.Sprintf(`
 你是一个本地 Codex 执行代理，这次任务来自飞书聊天消息。
 
@@ -164,10 +229,139 @@ func buildPrompt(entry inbound.LoggedEvent, resultMaxChars int) string {
 - chat_id: %s
 - sender_open_id: %s
 - message_id: %s
+- root_id: %s
+- parent_id: %s
+- thread_id: %s
+
+飞书话题上下文（按时间顺序，优先使用同一话题；用于保持连续性）：
+%s
 
 用户消息：
 %s
-`, resultMaxChars, entry.ChatID, entry.SenderOpenID, entry.MessageID, entry.MessageText))
+`, resultMaxChars, entry.ChatID, entry.SenderOpenID, entry.MessageID, entry.RootID, entry.ParentID, entry.ThreadID, conversationContext, entry.MessageText))
+}
+
+func (r *Runner) conversationContext(entry inbound.LoggedEvent) (string, error) {
+	containerType := "chat"
+	containerID := strings.TrimSpace(entry.ChatID)
+	limit := 12
+
+	if strings.TrimSpace(entry.ThreadID) != "" {
+		containerType = "thread"
+		containerID = strings.TrimSpace(entry.ThreadID)
+		limit = 25
+	}
+	if containerID == "" {
+		return formatLoggedFallback(entry), nil
+	}
+
+	messages, _, _, err := r.client.ListMessages(containerType, containerID, &api.ListMessagesOptions{
+		SortType: "ByCreateTimeDesc",
+		PageSize: limit,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	items := make([]contextMessage, 0, len(messages)+1)
+	seen := map[string]bool{}
+	for _, message := range messages {
+		item := contextMessageFromAPI(message)
+		if strings.TrimSpace(item.Text) == "" {
+			continue
+		}
+		items = append(items, item)
+		if item.MessageID != "" {
+			seen[item.MessageID] = true
+		}
+	}
+
+	if entry.MessageID != "" && !seen[entry.MessageID] {
+		items = append(items, contextMessage{
+			MessageID:  entry.MessageID,
+			CreateTime: entry.ReceivedAt,
+			Sender:     "user",
+			Text:       entry.MessageText,
+		})
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].CreateTime < items[j].CreateTime
+	})
+
+	lines := make([]string, 0, len(items))
+	for _, item := range items {
+		text := collapseWhitespace(item.Text)
+		if text == "" {
+			continue
+		}
+		if len([]rune(text)) > 600 {
+			runes := []rune(text)
+			text = string(runes[:600]) + "..."
+		}
+		lines = append(lines, fmt.Sprintf("- [%s] %s: %s", item.CreateTime, item.Sender, text))
+	}
+	if len(lines) == 0 {
+		return formatLoggedFallback(entry), nil
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+type contextMessage struct {
+	MessageID  string
+	CreateTime string
+	Sender     string
+	Text       string
+}
+
+func contextMessageFromAPI(message api.Message) contextMessage {
+	item := contextMessage{
+		MessageID:  message.MessageID,
+		CreateTime: message.CreateTime,
+		Sender:     "unknown",
+		Text:       messageBodyText(message.MsgType, message.Body),
+	}
+	if message.Sender != nil {
+		switch message.Sender.SenderType {
+		case "user":
+			item.Sender = "user"
+		case "app":
+			item.Sender = "assistant"
+		default:
+			item.Sender = message.Sender.SenderType
+		}
+	}
+	return item
+}
+
+func messageBodyText(messageType string, body *api.MessageBody) string {
+	if body == nil || strings.TrimSpace(body.Content) == "" {
+		return ""
+	}
+	text := inbound.ExtractMessageText(messageType, body.Content)
+	if strings.TrimSpace(text) != "" && text != body.Content {
+		return text
+	}
+
+	var payload struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal([]byte(body.Content), &payload); err == nil && strings.TrimSpace(payload.Text) != "" {
+		return payload.Text
+	}
+	return body.Content
+}
+
+func formatLoggedFallback(entry inbound.LoggedEvent) string {
+	text := collapseWhitespace(entry.MessageText)
+	if text == "" {
+		return "（没有可用的历史消息。）"
+	}
+	return fmt.Sprintf("- [%s] user: %s", entry.ReceivedAt, text)
+}
+
+func collapseWhitespace(s string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
 }
 
 func trimForFeishu(s string, max int) string {

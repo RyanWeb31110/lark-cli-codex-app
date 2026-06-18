@@ -30,6 +30,7 @@ type MessageInput struct {
 	MessageID    string
 	RootID       string
 	ParentID     string
+	ThreadID     string
 	ChatID       string
 	ChatType     string
 	MessageType  string
@@ -51,6 +52,7 @@ type LoggedEvent struct {
 	MessageID    string          `json:"message_id,omitempty"`
 	RootID       string          `json:"root_id,omitempty"`
 	ParentID     string          `json:"parent_id,omitempty"`
+	ThreadID     string          `json:"thread_id,omitempty"`
 	ChatID       string          `json:"chat_id,omitempty"`
 	ChatType     string          `json:"chat_type,omitempty"`
 	MessageType  string          `json:"message_type,omitempty"`
@@ -94,6 +96,7 @@ func NewLoggedEvent(input MessageInput) LoggedEvent {
 		MessageID:    input.MessageID,
 		RootID:       input.RootID,
 		ParentID:     input.ParentID,
+		ThreadID:     input.ThreadID,
 		ChatID:       input.ChatID,
 		ChatType:     input.ChatType,
 		MessageType:  input.MessageType,

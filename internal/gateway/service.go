@@ -171,6 +171,7 @@ func buildLoggedEvent(event *larkim.P2MessageReceiveV1) (inbound.LoggedEvent, er
 			input.MessageID = stringValue(event.Event.Message.MessageId)
 			input.RootID = stringValue(event.Event.Message.RootId)
 			input.ParentID = stringValue(event.Event.Message.ParentId)
+			input.ThreadID = stringValue(event.Event.Message.ThreadId)
 			input.ChatID = stringValue(event.Event.Message.ChatId)
 			input.ChatType = stringValue(event.Event.Message.ChatType)
 			input.MessageType = stringValue(event.Event.Message.MessageType)
