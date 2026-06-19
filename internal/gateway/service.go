@@ -57,6 +57,14 @@ func New(cfg Config) *Service {
 // Serve starts the long-connection client and waits until the context is canceled
 // or the SDK returns an error.
 func (s *Service) Serve(ctx context.Context) error {
+	if s.agent != nil {
+		defer func() {
+			if err := s.agent.Close(); err != nil {
+				s.logger.Printf("failed to close agent bridge: %v", err)
+			}
+		}()
+	}
+
 	appID := strings.TrimSpace(config.GetAppID())
 	if appID == "" {
 		return fmt.Errorf("app_id is required")
@@ -203,12 +211,15 @@ func DefaultAgentConfig() agent.Config {
 		timeoutMinutes = 20
 	}
 	return agent.Config{
-		Enabled:        config.GetAgentEnabled(),
-		CodexBinary:    config.GetAgentCodexBinary(),
-		Workspace:      config.GetAgentWorkspace(),
-		Model:          config.GetAgentModel(),
-		AckText:        config.GetAgentAckText(),
-		ResultMaxChars: config.GetAgentResultMaxChars(),
-		Timeout:        time.Duration(timeoutMinutes) * time.Minute,
+		Enabled:         config.GetAgentEnabled(),
+		Backend:         config.GetAgentBackend(),
+		CodexBinary:     config.GetAgentCodexBinary(),
+		Workspace:       config.GetAgentWorkspace(),
+		Model:           config.GetAgentModel(),
+		ReasoningEffort: config.GetAgentReasoningEffort(),
+		ThreadBindings:  config.GetAgentThreadBindingsPath(),
+		AckText:         config.GetAgentAckText(),
+		ResultMaxChars:  config.GetAgentResultMaxChars(),
+		Timeout:         time.Duration(timeoutMinutes) * time.Minute,
 	}
 }

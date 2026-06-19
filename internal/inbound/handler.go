@@ -174,7 +174,8 @@ func (h *Handler) autoReply(entry LoggedEvent) error {
 
 // ExtractMessageText returns the human-readable text when possible.
 func ExtractMessageText(messageType, raw string) string {
-	if strings.TrimSpace(raw) == "" {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
 		return ""
 	}
 
@@ -192,9 +193,100 @@ func ExtractMessageText(messageType, raw string) string {
 		if text, ok := generic["text"].(string); ok {
 			return text
 		}
+		if text := extractPostText(generic); strings.TrimSpace(text) != "" {
+			return text
+		}
 	}
 
 	return raw
+}
+
+func extractPostText(payload map[string]interface{}) string {
+	if text := collectPostContent(payload["content"]); text != "" {
+		return text
+	}
+
+	for _, locale := range []string{"zh_cn", "en_us", "ja_jp"} {
+		nested, ok := payload[locale].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if text := collectPostContent(nested["content"]); text != "" {
+			return text
+		}
+	}
+
+	for _, value := range payload {
+		nested, ok := value.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if text := collectPostContent(nested["content"]); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func collectPostContent(value interface{}) string {
+	lines, ok := value.([]interface{})
+	if !ok {
+		return strings.TrimSpace(collectPostElementText(value))
+	}
+
+	parts := make([]string, 0, len(lines))
+	for _, line := range lines {
+		text := strings.TrimSpace(collectPostLineText(line))
+		if text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func collectPostLineText(value interface{}) string {
+	elements, ok := value.([]interface{})
+	if !ok {
+		return collectPostElementText(value)
+	}
+
+	var builder strings.Builder
+	for _, element := range elements {
+		builder.WriteString(collectPostElementText(element))
+	}
+	return builder.String()
+}
+
+func collectPostElementText(value interface{}) string {
+	switch typed := value.(type) {
+	case []interface{}:
+		var builder strings.Builder
+		for _, item := range typed {
+			builder.WriteString(collectPostElementText(item))
+		}
+		return builder.String()
+	case map[string]interface{}:
+		tag, _ := typed["tag"].(string)
+		switch tag {
+		case "text", "a":
+			if text, ok := typed["text"].(string); ok {
+				return text
+			}
+		case "at":
+			if text, ok := typed["user_name"].(string); ok {
+				return "@" + text
+			}
+			if text, ok := typed["text"].(string); ok {
+				return text
+			}
+		case "br":
+			return "\n"
+		}
+		if content, ok := typed["content"]; ok {
+			return collectPostContent(content)
+		}
+	}
+	return ""
 }
 
 // ShouldAutoReply limits auto replies to user-originated messages with IDs.

@@ -1,4 +1,4 @@
-.PHONY: build clean run test deps
+.PHONY: build clean run test deps bridge-install bridge-start bridge-stop bridge-restart bridge-status bridge-logs
 
 BINARY_NAME=lark
 BUILD_DIR=.
@@ -36,3 +36,21 @@ install:
 # Install to vault tools/bin
 install-local:
 	go build -ldflags "$(LDFLAGS)" -o ../bin/lark ./cmd/lark
+
+bridge-install:
+	./scripts/manage-bridge.sh install
+
+bridge-start:
+	./scripts/manage-bridge.sh start
+
+bridge-stop:
+	./scripts/manage-bridge.sh stop
+
+bridge-restart:
+	./scripts/manage-bridge.sh restart
+
+bridge-status:
+	./scripts/manage-bridge.sh status
+
+bridge-logs:
+	./scripts/manage-bridge.sh logs

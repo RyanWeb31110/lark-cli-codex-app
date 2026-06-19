@@ -3,6 +3,8 @@
 set -euo pipefail
 
 force=0
+login=0
+no_login_prompt=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -10,14 +12,24 @@ while [[ $# -gt 0 ]]; do
       force=1
       shift
       ;;
+    --login)
+      login=1
+      shift
+      ;;
+    --no-login-prompt)
+      no_login_prompt=1
+      shift
+      ;;
     -h|--help)
       cat <<'EOF'
-Usage: ./scripts/install-codex-plugin.sh [--force]
+Usage: ./scripts/install-codex-plugin.sh [--force] [--login] [--no-login-prompt]
 
 Build the lark CLI and install bundled skills for Codex.
 
 Options:
-  --force    Overwrite existing skills with the same names
+  --force             Overwrite existing skills with the same names
+  --login             Run `lark auth login` after install if OAuth is missing or expired
+  --no-login-prompt   Do not prompt for OAuth login in interactive terminals
 EOF
       exit 0
       ;;
@@ -90,13 +102,47 @@ for skill_path in "$repo_root"/skills/*; do
   echo "Installed skill $skill_name -> $dest_path"
 done
 
+auth_hint=""
+auth_needed=0
+auth_status="$("$binary_path" auth status 2>/dev/null || true)"
+if [[ "$auth_status" == *'"authenticated": true'* ]]; then
+  auth_hint="OAuth status: authenticated."
+else
+  auth_needed=1
+  auth_hint="OAuth status: not authenticated or expired. Run: $binary_path auth login"
+fi
+
+if [[ "$auth_needed" -eq 1 && "$login" -eq 0 && "$no_login_prompt" -eq 0 && -t 0 && -t 1 ]]; then
+  read -r -p "OAuth is missing or expired. Run '$binary_path auth login' now? [y/N] " answer
+  case "$answer" in
+    y|Y|yes|YES)
+      login=1
+      ;;
+  esac
+fi
+
+if [[ "$auth_needed" -eq 1 && "$login" -eq 1 ]]; then
+  echo "Starting OAuth login..."
+  "$binary_path" auth login
+  auth_status="$("$binary_path" auth status 2>/dev/null || true)"
+  if [[ "$auth_status" == *'"authenticated": true'* ]]; then
+    auth_hint="OAuth status: authenticated."
+  else
+    auth_hint="OAuth status: still not authenticated. Run again when ready: $binary_path auth login"
+  fi
+fi
+
 cat <<EOF
 
 Done.
+
+$auth_hint
 
 Next steps:
 1. Ensure $bin_dir is in your PATH
 2. Update $config_file with your App ID and region
 3. Set LARK_APP_SECRET in $env_file
-4. Restart Codex so it picks up the new skills
+4. Run $binary_path auth login for user-scoped APIs such as docs, calendar, message history, sheets, and mail
+5. Restart Codex so it picks up the new skills
+6. Optional: run ./scripts/manage-bridge.sh restart to install and start the local Lark -> Codex bridge
 EOF

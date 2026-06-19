@@ -21,13 +21,16 @@ type Config struct {
 		RedirectPort int `mapstructure:"redirect_port"`
 	} `mapstructure:"oauth"`
 	Agent struct {
-		Enabled        bool   `mapstructure:"enabled"`
-		CodexBinary    string `mapstructure:"codex_binary"`
-		Workspace      string `mapstructure:"workspace"`
-		Model          string `mapstructure:"model"`
-		AckText        string `mapstructure:"ack_text"`
-		ResultMaxChars int    `mapstructure:"result_max_chars"`
-		TimeoutMinutes int    `mapstructure:"timeout_minutes"`
+		Enabled         bool   `mapstructure:"enabled"`
+		Backend         string `mapstructure:"backend"`
+		CodexBinary     string `mapstructure:"codex_binary"`
+		Workspace       string `mapstructure:"workspace"`
+		Model           string `mapstructure:"model"`
+		ReasoningEffort string `mapstructure:"reasoning_effort"`
+		ThreadBindings  string `mapstructure:"thread_bindings"`
+		AckText         string `mapstructure:"ack_text"`
+		ResultMaxChars  int    `mapstructure:"result_max_chars"`
+		TimeoutMinutes  int    `mapstructure:"timeout_minutes"`
 	} `mapstructure:"agent"`
 	Gateway struct {
 		EventLog      string `mapstructure:"event_log"`
@@ -84,7 +87,10 @@ func Init() error {
 	viper.SetDefault("defaults.reminder_minutes", 15)
 	viper.SetDefault("oauth.redirect_port", 9999)
 	viper.SetDefault("agent.enabled", false)
+	viper.SetDefault("agent.backend", "app_server")
 	viper.SetDefault("agent.codex_binary", "codex")
+	viper.SetDefault("agent.reasoning_effort", "medium")
+	viper.SetDefault("agent.thread_bindings", filepath.Join(cfgDir, "codex-thread-bindings.json"))
 	viper.SetDefault("agent.ack_text", "收到，开始处理。")
 	viper.SetDefault("agent.result_max_chars", 1800)
 	viper.SetDefault("agent.timeout_minutes", 20)
@@ -97,9 +103,12 @@ func Init() error {
 	viper.BindEnv("app_id", "LARK_APP_ID")
 	viper.BindEnv("app_secret", "LARK_APP_SECRET")
 	viper.BindEnv("agent.enabled", "LARK_AGENT_ENABLED")
+	viper.BindEnv("agent.backend", "LARK_AGENT_BACKEND")
 	viper.BindEnv("agent.codex_binary", "LARK_AGENT_CODEX_BINARY")
 	viper.BindEnv("agent.workspace", "LARK_AGENT_WORKSPACE")
 	viper.BindEnv("agent.model", "LARK_AGENT_MODEL")
+	viper.BindEnv("agent.reasoning_effort", "LARK_AGENT_REASONING_EFFORT")
+	viper.BindEnv("agent.thread_bindings", "LARK_AGENT_THREAD_BINDINGS")
 	viper.BindEnv("agent.ack_text", "LARK_AGENT_ACK_TEXT")
 	viper.BindEnv("agent.result_max_chars", "LARK_AGENT_RESULT_MAX_CHARS")
 	viper.BindEnv("agent.timeout_minutes", "LARK_AGENT_TIMEOUT_MINUTES")
@@ -171,6 +180,11 @@ func GetAgentEnabled() bool {
 	return viper.GetBool("agent.enabled")
 }
 
+// GetAgentBackend returns the Codex bridge backend: app_server (default) or codex_exec.
+func GetAgentBackend() string {
+	return strings.TrimSpace(viper.GetString("agent.backend"))
+}
+
 // GetAgentCodexBinary returns the codex binary path or command name.
 func GetAgentCodexBinary() string {
 	return strings.TrimSpace(viper.GetString("agent.codex_binary"))
@@ -204,6 +218,23 @@ func GetAgentWorkspace() string {
 // GetAgentModel returns the optional model override for Codex tasks.
 func GetAgentModel() string {
 	return strings.TrimSpace(viper.GetString("agent.model"))
+}
+
+// GetAgentReasoningEffort returns the optional reasoning effort override for Codex tasks.
+func GetAgentReasoningEffort() string {
+	return strings.TrimSpace(viper.GetString("agent.reasoning_effort"))
+}
+
+// GetAgentThreadBindingsPath returns the JSON path used for Lark to Codex thread bindings.
+func GetAgentThreadBindingsPath() string {
+	path := strings.TrimSpace(viper.GetString("agent.thread_bindings"))
+	if path == "" {
+		return filepath.Join(cfgDir, "codex-thread-bindings.json")
+	}
+	if !filepath.IsAbs(path) {
+		return filepath.Join(rootDir, path)
+	}
+	return path
 }
 
 // GetAgentAckText returns the acknowledgement text sent immediately after accepting a task.

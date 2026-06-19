@@ -30,6 +30,29 @@ func TestNewLoggedEventExtractsText(t *testing.T) {
 	}
 }
 
+func TestNewLoggedEventExtractsPostText(t *testing.T) {
+	entry := NewLoggedEvent(MessageInput{
+		Schema:      "2.0",
+		EventType:   "im.message.receive_v1",
+		MessageID:   "om_123",
+		MessageType: "post",
+		RawContent:  `{"title":"","content":[[{"tag":"text","text":"#status","style":[]}]]}`,
+	})
+
+	if entry.MessageText != "#status" {
+		t.Fatalf("unexpected message text: %s", entry.MessageText)
+	}
+}
+
+func TestExtractMessageTextFromMultilinePost(t *testing.T) {
+	raw := `{"title":"","content":[[{"tag":"text","text":"第一行"}],[{"tag":"at","user_name":"崔暄"},{"tag":"text","text":" 第二行"},{"tag":"a","text":" 链接","href":"https://example.com"}]]}`
+	got := ExtractMessageText("post", raw)
+	want := "第一行\n@崔暄 第二行 链接"
+	if got != want {
+		t.Fatalf("ExtractMessageText() = %q, want %q", got, want)
+	}
+}
+
 func TestHandlerProcessWritesJSONL(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "events.jsonl")
 	handler := NewHandler(Config{

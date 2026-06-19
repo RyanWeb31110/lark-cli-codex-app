@@ -14,6 +14,12 @@
     <string>--desktop-worker=false</string>
     <string>--agent-workspace</string>
     <string>/Users/YOUR_USERNAME/WorkSpace</string>
+    <string>--agent-backend</string>
+    <string>app_server</string>
+    <string>--agent-reasoning-effort</string>
+    <string>medium</string>
+    <string>--agent-thread-bindings</string>
+    <string>/Users/YOUR_USERNAME/.lark/codex-thread-bindings.json</string>
   </array>
 
   <key>RunAtLoad</key>
