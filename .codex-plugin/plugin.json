@@ -1,6 +1,6 @@
 {
   "name": "lark-cli-codex-app",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Codex plugin and local bridge for Lark and Feishu, powered by lark-cli and Codex app-server.",
   "author": {
     "name": "RyanWeb31110",
