@@ -142,13 +142,28 @@ make install  # 安装到 $GOPATH/bin
 .agents/plugins/marketplace.json
 ```
 
-把这个仓库作为本地 marketplace source 加到 Codex：
+推荐把这个仓库作为 Git marketplace source 加到 Codex，这样 Codex App 里的
+**Upgrade** 能正常刷新远端 marketplace：
+
+```bash
+codex plugin marketplace add git@github.com:RyanWeb31110/lark-cli-codex-app.git
+```
+
+如果本机没有配置 GitHub SSH，也可以使用 HTTPS：
+
+```bash
+codex plugin marketplace add https://github.com/RyanWeb31110/lark-cli-codex-app.git
+```
+
+然后重启 Codex，在 Codex App 的 **Plugins** 里切换到 **Lark Codex App** marketplace，安装 **Lark Codex Bridge**。
+
+本地开发调试时也可以使用本地路径安装：
 
 ```bash
 codex plugin marketplace add /path/to/lark-cli-codex-app
 ```
 
-然后重启 Codex，在 Codex App 的 **Plugins** 里切换到 **Lark Codex App** marketplace，安装 **Lark Codex Bridge**。
+但本地路径会显示为 local marketplace，Codex App 的 **Upgrade** 按钮不可用。
 
 这个 marketplace 入口负责让 Codex 识别和安装插件本体；本地 bridge 后台服务、飞书 OAuth、`~/.lark/env.sh` 里的 `LARK_APP_SECRET` 仍需要按下面的安装步骤配置。
 
