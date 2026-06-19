@@ -66,6 +66,14 @@ if [[ -f "$env_file" ]]; then
   # shellcheck disable=SC1090
   source "$env_file"
 fi
+bundled_codex="\${CODEX_HOME:-\$HOME/.codex}/plugins/.plugin-appserver/codex"
+case "\${LARK_AGENT_CODEX_BINARY:-}" in
+  ""|"codex"|"/opt/homebrew/bin/codex"|"\$HOME/bin/codex"|"\$HOME/.local/bin/codex")
+    if [[ -x "\$bundled_codex" ]]; then
+      export LARK_AGENT_CODEX_BINARY="\$bundled_codex"
+    fi
+    ;;
+esac
 exec "$real_binary_path" "\$@"
 EOF
 chmod 0755 "$binary_path"

@@ -83,6 +83,7 @@ Examples:
 			"auto_reply_enabled":     cfg.AutoReplyText != "",
 			"agent_enabled":          cfg.Agent.Enabled,
 			"agent_backend":          cfg.Agent.Backend,
+			"agent_codex_binary":     cfg.Agent.CodexBinary,
 			"agent_workspace":        cfg.Agent.Workspace,
 			"agent_reasoning_effort": cfg.Agent.ReasoningEffort,
 			"agent_thread_bindings":  cfg.Agent.ThreadBindings,

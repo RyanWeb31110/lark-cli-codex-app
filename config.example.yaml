@@ -22,6 +22,8 @@ agent:
   enabled: false
   # app_server keeps a local Codex process warm; codex_exec is the legacy fallback.
   backend: "app_server"
+  # The installed wrapper and bridge launcher prefer the Codex App bundled binary
+  # when available, so app-server can read the same thread format as Codex Desktop.
   codex_binary: "codex"
   workspace: "~/WorkSpace"
   # Override any global high-effort Codex setting for chat-triggered tasks.

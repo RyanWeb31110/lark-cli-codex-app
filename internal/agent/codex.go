@@ -242,9 +242,17 @@ func (r *Runner) executeCodexExec(prompt string) (string, error) {
 }
 
 func resolveCodexBinary(configured string) (string, error) {
+	configured = strings.TrimSpace(configured)
 	candidates := []string{}
-	if strings.TrimSpace(configured) != "" {
-		candidates = append(candidates, strings.TrimSpace(configured))
+	if filepath.IsAbs(configured) {
+		candidates = append(candidates, configured)
+	} else {
+		if configured == "" || configured == "codex" {
+			candidates = append(candidates, bundledCodexCandidates()...)
+		}
+		if configured != "" {
+			candidates = append(candidates, configured)
+		}
 	}
 	candidates = append(candidates,
 		"/opt/homebrew/bin/codex",
@@ -252,7 +260,12 @@ func resolveCodexBinary(configured string) (string, error) {
 		"codex",
 	)
 
+	seen := map[string]bool{}
 	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate) == "" || seen[candidate] {
+			continue
+		}
+		seen[candidate] = true
 		if filepath.IsAbs(candidate) {
 			if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
 				return candidate, nil
@@ -265,6 +278,28 @@ func resolveCodexBinary(configured string) (string, error) {
 	}
 
 	return "", fmt.Errorf("找不到 Codex CLI，请确认 /opt/homebrew/bin/codex 或 ~/bin/codex 存在")
+}
+
+func bundledCodexCandidates() []string {
+	roots := []string{}
+	if home := strings.TrimSpace(os.Getenv("CODEX_HOME")); home != "" {
+		roots = append(roots, home)
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		roots = append(roots, filepath.Join(home, ".codex"))
+	}
+
+	candidates := make([]string, 0, len(roots))
+	seen := map[string]bool{}
+	for _, root := range roots {
+		root = strings.TrimSpace(root)
+		if root == "" || seen[root] {
+			continue
+		}
+		seen[root] = true
+		candidates = append(candidates, filepath.Join(root, "plugins", ".plugin-appserver", "codex"))
+	}
+	return candidates
 }
 
 func codexEnv(base []string) []string {

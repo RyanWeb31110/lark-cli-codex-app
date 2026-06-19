@@ -24,6 +24,7 @@ Environment overrides:
   LARK_CONFIG_DIR                lark config directory
   LARK_AGENT_WORKSPACE           workspace passed to Codex
   LARK_AGENT_BACKEND             app_server or codex_exec
+  LARK_AGENT_CODEX_BINARY        codex binary used by the agent app-server
   LARK_AGENT_REASONING_EFFORT    minimal, low, medium, high, or xhigh
   LARK_AGENT_THREAD_BINDINGS     binding JSON path
   LARK_GATEWAY_LOG               gateway log path
@@ -33,12 +34,41 @@ EOF
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 uid="$(id -u)"
 
+bundled_codex_binary() {
+  local codex_home="${CODEX_HOME:-$HOME/.codex}"
+  local bundled="$codex_home/plugins/.plugin-appserver/codex"
+  if [[ -x "$bundled" ]]; then
+    printf '%s\n' "$bundled"
+    return
+  fi
+}
+
+resolve_agent_codex_binary() {
+  local configured="${1:-}"
+  local bundled
+  bundled="$(bundled_codex_binary)"
+  if [[ -n "$bundled" ]]; then
+    case "$configured" in
+      ""|"codex"|"/opt/homebrew/bin/codex"|"$HOME/bin/codex"|"$HOME/.local/bin/codex")
+        printf '%s\n' "$bundled"
+        return
+        ;;
+    esac
+  fi
+  if [[ -n "$configured" ]]; then
+    printf '%s\n' "$configured"
+    return
+  fi
+  printf '%s\n' "codex"
+}
+
 label="${LARK_BRIDGE_LABEL:-com.local.lark-cli-codex-app.gateway}"
 lark_bin="${LARK_BIN:-$HOME/.local/bin/lark}"
 launcher="${LARK_LAUNCHER:-/bin/bash}"
 config_dir="${LARK_CONFIG_DIR:-$HOME/.lark}"
 workspace="${LARK_AGENT_WORKSPACE:-$HOME/WorkSpace}"
 backend="${LARK_AGENT_BACKEND:-app_server}"
+codex_binary="$(resolve_agent_codex_binary "${LARK_AGENT_CODEX_BINARY:-}")"
 reasoning_effort="${LARK_AGENT_REASONING_EFFORT:-medium}"
 thread_bindings="${LARK_AGENT_THREAD_BINDINGS:-$config_dir/codex-thread-bindings.json}"
 log_path="${LARK_GATEWAY_LOG:-$config_dir/gateway.log}"
@@ -86,6 +116,8 @@ write_plist() {
   <dict>
     <key>LARK_CONFIG_DIR</key>
     <string>$config_dir</string>
+    <key>LARK_AGENT_CODEX_BINARY</key>
+    <string>$codex_binary</string>
   </dict>
 
   <key>RunAtLoad</key>

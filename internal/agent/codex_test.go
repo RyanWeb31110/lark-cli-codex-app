@@ -2,6 +2,8 @@ package agent
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -124,6 +126,45 @@ func TestBackendNormalization(t *testing.T) {
 	}
 }
 
+func TestResolveCodexBinaryPrefersBundledAppServerForDefault(t *testing.T) {
+	codexHome := t.TempDir()
+	bundled := filepath.Join(codexHome, "plugins", ".plugin-appserver", "codex")
+	writeExecutableForTest(t, bundled)
+
+	pathDir := t.TempDir()
+	pathCodex := filepath.Join(pathDir, "codex")
+	writeExecutableForTest(t, pathCodex)
+
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("PATH", pathDir)
+
+	got, err := resolveCodexBinary("codex")
+	if err != nil {
+		t.Fatalf("resolveCodexBinary returned error: %v", err)
+	}
+	if got != bundled {
+		t.Fatalf("resolveCodexBinary() = %q, want bundled %q", got, bundled)
+	}
+}
+
+func TestResolveCodexBinaryHonorsAbsoluteConfiguredPath(t *testing.T) {
+	codexHome := t.TempDir()
+	writeExecutableForTest(t, filepath.Join(codexHome, "plugins", ".plugin-appserver", "codex"))
+
+	configured := filepath.Join(t.TempDir(), "custom-codex")
+	writeExecutableForTest(t, configured)
+
+	t.Setenv("CODEX_HOME", codexHome)
+
+	got, err := resolveCodexBinary(configured)
+	if err != nil {
+		t.Fatalf("resolveCodexBinary returned error: %v", err)
+	}
+	if got != configured {
+		t.Fatalf("resolveCodexBinary() = %q, want configured %q", got, configured)
+	}
+}
+
 func TestCompletedAgentMessageFromItem(t *testing.T) {
 	params := json.RawMessage(`{"threadId":"thread-1","item":{"type":"agentMessage","text":"done"}}`)
 	if got := completedAgentMessage(params); got != "done" {
@@ -154,5 +195,15 @@ func TestMessageThreadMatches(t *testing.T) {
 	}
 	if messageThreadMatches(params, "thread-2") {
 		t.Fatal("different thread id should not match")
+	}
+}
+
+func writeExecutableForTest(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
 	}
 }
