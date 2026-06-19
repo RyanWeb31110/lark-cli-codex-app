@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Lark Codex Bridge">
+  <defs>
+    <linearGradient id="bg" x1="18" y1="12" x2="112" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#16D9A1"/>
+      <stop offset="1" stop-color="#007A5A"/>
+    </linearGradient>
+    <linearGradient id="node" x1="28" y1="26" x2="92" y2="98" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DDFCF2"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <path d="M36 34h42c12.2 0 22 9.8 22 22v8c0 12.2-9.8 22-22 22H61.7L42.4 101c-2.8 2.2-6.9.2-6.9-3.4V85.5C24.7 83.7 16 74.4 16 63V56c0-12.2 9.8-22 20-22Z" fill="url(#node)" opacity=".96"/>
+  <circle cx="46" cy="60" r="7" fill="#006B52"/>
+  <circle cx="64" cy="60" r="7" fill="#006B52"/>
+  <circle cx="82" cy="60" r="7" fill="#006B52"/>
+  <path d="M48 90c7.2 6.3 16.5 9.9 26.3 9.9 14.6 0 28-7.9 35.1-20.6" fill="none" stroke="#E8FFF8" stroke-width="7" stroke-linecap="round"/>
+  <path d="M101 77h10v10" fill="none" stroke="#E8FFF8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

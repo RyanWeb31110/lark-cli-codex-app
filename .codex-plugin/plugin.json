@@ -38,6 +38,8 @@
       "Start the Lark Codex bridge and show its status.",
       "Find the last messages in our release chat and summarize decisions."
     ],
-    "brandColor": "#00B96B"
+    "brandColor": "#00B96B",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png"
   }
 }
