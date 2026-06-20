@@ -1,6 +1,10 @@
 # lark-cli-codex-app
 
-`lark-cli-codex-app` 是一个面向 Codex 的飞书/Lark 本地控制项目。它基于 [`yjwong/lark-cli`](https://github.com/yjwong/lark-cli)，保留上游 Go CLI 和技能定义，并补充了 Codex 插件元数据、本地安装脚本、飞书 WebSocket 网关、Codex app-server bridge 和桌面任务队列。
+> 在飞书/Lark 里远程驱动本地 Codex App —— 通过 WebSocket 网关、Codex app-server bridge 和桌面任务队列，打通「聊天发起任务、本地执行、结果回写飞书」的完整闭环。
+>
+> Drive your local **Codex App** from **Feishu / Lark**. A WebSocket gateway, a `codex app-server` bridge, and a desktop task queue that close the full chat-to-agent loop — send a task from chat, run it locally, and write results back to Feishu / Lark.
+
+`lark-cli-codex-app` 是一个用飞书/Lark **远程控制本地 Codex App** 的项目。它基于 [`yjwong/lark-cli`](https://github.com/yjwong/lark-cli)，保留上游的 Go CLI 和 skill 定义，并补充了 Codex 插件元数据、本地安装脚本、飞书/Lark WebSocket 网关、`codex app-server` bridge 和桌面任务队列。
 
 它的目标不是重新实现一个 agent runtime，而是把飞书/Lark 接入为 Codex App 的远程入口和协作回写界面：
 
@@ -27,16 +31,17 @@
 - [Skills](#skills)
 - [开发](#开发)
 - [排障](#排障)
+- [交流与社群](#交流与社群)
 
 ## 项目定位
 
-多数 chat-to-agent 项目只解决单向链路：人在聊天软件里发消息，本地 agent 执行后回复结果。
+多数「聊天软件接 agent」的项目只解决单向链路：人在聊天软件里发消息，本地 agent 执行后把结果回复回来。
 
-这个项目更关注完整闭环：
+这个项目专注于把**飞书/Lark 变成本地 Codex App 的远程遥控器**，并形成完整闭环：
 
-- **飞书/Lark 发起任务**：支持单聊、群聊、话题和移动端使用。
-- **Codex 本机执行**：默认通过长驻 `codex app-server` 执行任务，保留 `codex exec` 兼容回退。
-- **本地上下文可用**：Codex 可以读取 workspace、运行测试、操作终端、浏览器和本机应用。
+- **飞书/Lark 发起任务**：支持单聊、群聊、话题和移动端，随时随地把任务丢给本机 Codex App。
+- **Codex App 本机执行**：默认通过长驻 `codex app-server` 执行任务，保留 `codex exec` 兼容回退。
+- **本地上下文可用**：Codex 可以读取 workspace、运行测试、操作终端、浏览器和本机应用（computer use）。
 - **飞书/Lark 回写**：通过 `lark-cli` 和内置 skills 读取或更新消息、文档、日历、表格、多维表格、邮件和妙记。
 - **桌面 GUI 队列**：需要前台 GUI 权限的任务进入桌面队列，由本地 helper 处理。
 
@@ -449,6 +454,14 @@ skills/          Codex / Claude Code skills
 ### Desktop helper 无法点击或输入
 
 在 macOS 系统设置中给运行 helper 的前台应用授予 Accessibility 权限，例如 Terminal 或 Codex Desktop。后台 gateway 不应直接承担前台 GUI 操作。
+
+## 交流与社群
+
+欢迎扫码加入微信群 **「AI 工具交流」**，一起讨论飞书/Lark 控制 Codex App 的玩法、反馈问题和分享工作流：
+
+<img src="./assets/readme/wechat-qr.png" alt="微信群「AI 工具交流」二维码" width="240" />
+
+> 群二维码有有效期（重新进入会更新）。如果已过期，欢迎在 [Issues](https://github.com/RyanWeb31110/lark-cli-codex-app/issues) 中留言获取最新入群方式。
 
 ## 许可证
 
